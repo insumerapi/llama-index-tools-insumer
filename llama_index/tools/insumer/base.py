@@ -89,7 +89,7 @@ class InsumerToolSpec(BaseToolSpec):
     - ``get_trust_profile``: fetch a multi-dimensional wallet trust profile
       (stablecoins, governance, NFTs, staking, plus optional
       Solana/XRPL/Bitcoin/Tron/Stellar/Sui dimensions). Returns a signed
-      summary of which dimensions show activity. Up to 49 checks across 27
+      summary of which dimensions show activity. Up to 50 checks across 28
       chains.
     - ``list_compliance_templates``: discover pre-configured compliance
       templates (Coinbase Verified Account, Gitcoin Passport, etc.) usable
@@ -361,7 +361,7 @@ class InsumerToolSpec(BaseToolSpec):
 
         Trust profile reports which dimensions show activity. Each dimension
         runs a curated set of token/NFT balance checks (``balance > 0``):
-        44 base checks across 25 chains in 5 dimensions, up to 49 across 27
+        45 base checks across 26 chains in 5 dimensions, up to 50 across 28
         chains in 9 dimensions with the optional wallets. A check whose chain
         wallet was not supplied stays in the signed profile with
         ``evaluated: False`` and ``reason: "wallet_not_provided"``, counted in

@@ -117,7 +117,7 @@ A rejected request raises `requests.HTTPError`. The exception message carries th
 
 ### `get_trust_profile`
 
-Multi-dimensional wallet trust profile — stablecoins, governance, NFTs, staking, institutional stablecoins (plus Solana, XRPL, Bitcoin, Tron, Stellar, Sui when those wallet addresses are supplied). Returns a signed summary showing which dimensions have activity, without exposing raw balances. 44 base checks across 25 chains in 5 dimensions; up to 49 across 27 chains in 9 dimensions. A check whose chain wallet was not supplied stays in the signed profile with `evaluated: false` and is counted in `notEvaluatedCount`, never as a pass or a fail.
+Multi-dimensional wallet trust profile — stablecoins, governance, NFTs, staking, institutional stablecoins (plus Solana, XRPL, Bitcoin, Tron, Stellar, Sui when those wallet addresses are supplied). Returns a signed summary showing which dimensions have activity, without exposing raw balances. 45 base checks across 26 chains in 5 dimensions; up to 50 across 28 chains in 9 dimensions. A check whose chain wallet was not supplied stays in the signed profile with `evaluated: false` and is counted in `notEvaluatedCount`, never as a pass or a fail.
 
 ```python
 insumer.get_trust_profile(
