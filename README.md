@@ -1,6 +1,6 @@
 # LlamaIndex Tools Integration: InsumerAPI
 
-Wallet auth and condition-based access for LlamaIndex agents. Across 38 chains — read → evaluate → sign, returning an ECDSA-signed boolean your agent can verify offline against the public JWKS. Boolean, not balance: the API never exposes wallet holdings, only a signed yes-or-no against the conditions you configure.
+Wallet auth and condition-based access for LlamaIndex agents. Across 37 chains: read → evaluate → sign, returning an ECDSA-signed boolean your agent can verify offline against the public JWKS. Boolean, not balance: the API never exposes wallet holdings, only a signed yes-or-no against the conditions you configure.
 
 Part of [InsumerAPI](https://insumermodel.com/developers/). No secrets. No identity-first. No static credentials.
 
@@ -55,12 +55,17 @@ Run wallet attestation against 1–10 conditions. Returns an ECDSA-signed verdic
 
 Supported condition types:
 
-- `token_balance` — ERC-20 / SPL / XRPL trust line / native BTC / TRC-20 / Stellar trustline / Sui-native ≥ threshold
-- `nft_ownership` — ERC-721/ERC-1155/XRPL NFToken holding
-- `eas_attestation` — EAS schema check (pass a `template` like `coinbase_verified_account` or a raw `schemaId`)
-- `farcaster_id` — Farcaster ID registered on Optimism
-- `ratio_to_amount` — self-scaling agent-spend rule: balance ≥ `multiple` × `amount` (RPC EVM chains only)
-- `ratio_to_supply` — share-of-supply rule: balance / `totalSupply()` ≥ `minFraction`, a fraction in (0, 1] (RPC EVM chains, ERC-20 only)
+- `token_balance`: ERC-20 / SPL / XRPL trust line / native BTC / TRC-20 / Stellar trustline / Sui-native ≥ threshold
+- `nft_ownership`: ERC-721/ERC-1155/XRPL NFToken holding
+- `eas_attestation`: EAS schema check (pass a `template` like `coinbase_verified_account` or a raw `schemaId`)
+- `farcaster_id`: Farcaster ID registered on Optimism
+- `ratio_to_amount`: self-scaling agent-spend rule, balance ≥ `multiple` × `amount` (EVM chains only)
+- `ratio_to_supply`: share-of-supply rule, balance / `totalSupply()` ≥ `minFraction`, a fraction in (0, 1] (EVM chains only, ERC-20 only)
+- `evm_view_call`: any single-address-argument view function returning bool, named by `selector` (e.g. `"hasAccess(address)"`) (EVM chains only)
+- `erc8004_agent`: ERC-8004 agent registration on Base, met when the wallet owns the agent NFT for `agentId` or is its registry agentWallet binding (registration is permissionless; no vetting implied)
+- `erc7710_delegation`: ERC-7710 delegation validity on Base (max 3 per call), met when the wallet is the delegate of a signed, unrevoked `delegation` from `expectedDelegator`; attestations expire in 5 minutes
+
+`decimals` is optional on `token_balance` and `ratio_to_amount`. Leave it out: the token's own decimals are always read from the chain. If sent it is only a cross-check, and a value that differs from the token's own decimals is rejected with a 400. `contractAddress: "native"` is for `token_balance` and `ratio_to_amount` only; `nft_ownership` needs the NFT contract address and `"native"` there is a 400.
 
 ```python
 insumer.attest_wallet(
@@ -71,7 +76,6 @@ insumer.attest_wallet(
             "contractAddress": "native",
             "chainId": 1,
             "threshold": "1",
-            "decimals": 18,
             "label": "ETH >= 1 on Ethereum",  # a condition the example wallet reliably meets
         },
     ],
@@ -107,7 +111,9 @@ Response shape:
 
 Since September 2026 every attest and trust response also carries an ML-DSA-65 post-quantum companion signature (`pqSig`, `pqKid`; `pqJwt` beside `jwt`) over the same bytes the classical `kid` selects. It is additive: `sig` and `kid` are unchanged. Trust responses carry `kid: insumer-trust-v2` and `pqKid: insumer-trust-pq1`. [insumer-verify](https://www.npmjs.com/package/insumer-verify) 1.8.0 and later report the companion as a fifth verdict beside signature, condition hashes, freshness, and expiry.
 
-Costs 1 credit per call (2 with `proof="merkle"` for EIP-1186 storage proofs).
+Costs 1 credit per call (2 with `proof="merkle"` for EIP-1186 storage proofs, available on 27 of the 31 EVM chains: not ZKsync Era, Sei, Viction or XDC Network).
+
+A rejected request raises `requests.HTTPError`. The exception message carries the API's own error message (for a 503, also the `failedConditions` list), and the response is attached as `exc.response`.
 
 ### `get_trust_profile`
 
@@ -202,15 +208,15 @@ Pay-per-call wallets that reach $1.00 in cumulative spend become eligible to cla
 
 ## Supported chains
 
-38 total:
+37 total:
 
-- **32 EVM chains**: Ethereum, Base, Arbitrum, Optimism, Polygon, Avalanche, BNB, XDC, Robinhood Chain, Unichain, Linea, zkSync, Scroll, Blast, Mantle, Celo, Gnosis, Sonic, Moonbeam, and more
+- **31 EVM chains**: Ethereum, Base, Arbitrum, Optimism, Polygon, Avalanche, BNB, XDC, Robinhood Chain, Arc, Unichain, Linea, zkSync, Scroll, Blast, Mantle, Celo, Gnosis, Sonic, and more
 - **Solana** (mainnet)
-- **XRPL** (mainnet) — native XRP plus trust-line tokens
-- **Bitcoin** (mainnet) — native BTC only
-- **Tron** — native TRX plus TRC-20 (USDT-TRC20)
-- **Stellar** — native XLM plus classic trustline assets (USDC, BENJI, etc.)
-- **Sui** — native SUI plus Sui-native tokens (USDC)
+- **XRPL** (mainnet): native XRP plus trust-line tokens
+- **Bitcoin** (mainnet): native BTC only
+- **Tron**: native TRX plus TRC-20 (USDT-TRC20)
+- **Stellar**: native XLM plus classic trustline assets (USDC, BENJI, etc.)
+- **Sui**: native SUI (`contractAddress: "0x2::sui::SUI"`; `"native"` is not accepted on Sui) plus Sui-native tokens by full coin type (USDC)
 
 ## Positioning
 
@@ -225,7 +231,7 @@ Wallet auth is the primitive. Condition-based access is the category. Token gati
 - Docs: [insumermodel.com/developers/](https://insumermodel.com/developers/)
 - OpenAPI spec: [insumermodel.com/openapi.yaml](https://insumermodel.com/openapi.yaml)
 - Public JWKS: [api.insumermodel.com/.well-known/jwks.json](https://api.insumermodel.com/.well-known/jwks.json)
-- Companion packages: `langchain-insumer` (LangChain), `mcp-server-insumer` (Model Context Protocol), `eliza-plugin-insumer` (ElizaOS)
+- Companion packages: `langchain-insumer` (LangChain), `mcp-server-insumer` (Model Context Protocol), `@insumermodel/plugin-eliza` (ElizaOS)
 
 ## License
 

@@ -1,6 +1,6 @@
 """InsumerAPI tool spec for LlamaIndex.
 
-Wallet auth and condition-based access across 38 chains.
+Wallet auth and condition-based access across 37 chains.
 Read --> evaluate --> sign. Returns an ECDSA-signed boolean you can verify
 offline against our public JWKS. Boolean, not balance: the API never exposes
 wallet holdings, only a signed yes-or-no against the conditions you configure.
@@ -10,12 +10,71 @@ import os
 
 from typing import Any, Dict, List, Optional
 
+from decimal import Decimal
+
 import requests
 from llama_index.core.tools.tool_spec.base import BaseToolSpec
 
 DEFAULT_BASE_URL = "https://api.insumermodel.com"
 DEFAULT_JWKS_URL = "https://api.insumermodel.com/.well-known/jwks.json"
 DEFAULT_TIMEOUT = 30
+
+
+
+def _decimal_str(value: Any) -> str:
+    """A number as a plain decimal string.
+
+    ``str()`` of a float switches to exponent notation for very small and very
+    large values ("1e-07"), which the API does not read as a decimal string.
+    """
+    if isinstance(value, bool):
+        raise ValueError("a condition quantity must be a number or a decimal string, not a bool")
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return format(Decimal(repr(value)), "f")
+    return str(value)
+
+def _raise_for_status(response: requests.Response) -> None:
+    """Raise ``requests.HTTPError`` on a 4xx/5xx, carrying the API's own message.
+
+    The API explains a rejected request in its JSON body (``error.message``),
+    and a refused read (503) lists the conditions it could not read in
+    ``error.failedConditions``. Both are included in the exception message so
+    the caller, or the agent, can see what to change. The response is attached
+    as ``exc.response``. When the body is not JSON, the plain status error is
+    raised.
+    """
+    status = response.status_code
+    if not isinstance(status, int) or status < 400:
+        return
+    detail = ""
+    try:
+        body = response.json()
+    except ValueError:
+        body = None
+    if isinstance(body, dict):
+        err = body.get("error")
+        if isinstance(err, dict):
+            parts = []
+            if err.get("code"):
+                parts.append(str(err["code"]))
+            if err.get("message"):
+                parts.append(str(err["message"]))
+            detail = ": ".join(parts)
+            failed = err.get("failedConditions")
+            if failed:
+                detail = f"{detail} (failedConditions: {failed})"
+        elif isinstance(err, str):
+            detail = err
+    if not detail:
+        response.raise_for_status()
+        raise requests.HTTPError(
+            f"InsumerAPI returned HTTP {status}", response=response
+        )
+    raise requests.HTTPError(
+        f"InsumerAPI returned HTTP {status}: {detail}", response=response
+    )
 
 
 class InsumerToolSpec(BaseToolSpec):
@@ -25,7 +84,7 @@ class InsumerToolSpec(BaseToolSpec):
 
     - ``attest_wallet``: run wallet attestation against one or more conditions
       (token balance, NFT ownership, EAS attestation, Farcaster ID) across
-      38 chains. Returns an ECDSA-signed boolean verdict per condition
+      37 chains. Returns an ECDSA-signed boolean verdict per condition
       plus condition hashes for tamper detection.
     - ``get_trust_profile``: fetch a multi-dimensional wallet trust profile
       (stablecoins, governance, NFTs, staking, plus optional
@@ -96,7 +155,7 @@ class InsumerToolSpec(BaseToolSpec):
             headers=self._headers(include_auth=True),
             timeout=self.timeout,
         )
-        response.raise_for_status()
+        _raise_for_status(response)
         return response.json()
 
     def _get(self, path: str, include_auth: bool = False) -> Dict[str, Any]:
@@ -105,7 +164,7 @@ class InsumerToolSpec(BaseToolSpec):
             headers=self._headers(include_auth=include_auth),
             timeout=self.timeout,
         )
-        response.raise_for_status()
+        _raise_for_status(response)
         return response.json()
 
     def attest_wallet(
@@ -134,23 +193,30 @@ class InsumerToolSpec(BaseToolSpec):
         Args:
             conditions: List of 1 to 10 condition objects. Each object must
                 have a ``type`` field: ``token_balance``, ``nft_ownership``
-                (34 of the 38 chains: EVM + Solana + XRPL; Bitcoin, Tron,
+                (33 of the 37 chains: EVM + Solana + XRPL; Bitcoin, Tron,
                 Stellar and Sui are token-balance only), ``eas_attestation``,
                 ``farcaster_id``, ``evm_view_call``, ``ratio_to_amount``,
                 ``ratio_to_supply``, ``erc8004_agent``, or
                 ``erc7710_delegation``. Token balance conditions require
-                ``contractAddress``, ``chainId``, ``threshold`` (a decimal
-                string in token units, e.g. ``"100"``; a number is coerced),
-                and (for EVM) ``decimals``. EAS conditions can use a pre-configured
+                ``contractAddress``, ``chainId`` and ``threshold`` (a decimal
+                string in token units, e.g. ``"100"``; a number is coerced).
+                ``decimals`` is optional. Leave it out: the token's own
+                decimals are always read from the chain. If sent it is only
+                a cross-check, and a value that differs from the token's own
+                decimals is rejected with a 400. ``contractAddress:
+                "native"`` is for ``token_balance`` and ``ratio_to_amount``
+                only; ``nft_ownership`` needs the NFT contract address (0x +
+                40 hex on EVM) and ``"native"`` there is a 400. EAS
+                conditions can use a pre-configured
                 ``template`` (from list_compliance_templates) or a raw
-                ``schemaId``. ``ratio_to_amount`` (RPC EVM chains only)
+                ``schemaId``. ``ratio_to_amount`` (EVM chains only)
                 requires ``contractAddress``, ``chainId``, ``multiple``, and
-                ``amount`` — met iff balance >= multiple * amount.
-                ``ratio_to_supply`` (RPC EVM, ERC-20 only) requires
+                ``amount``: met iff balance >= multiple * amount.
+                ``ratio_to_supply`` (EVM chains only, ERC-20 only) requires
                 ``contractAddress``, ``chainId``, and ``minFraction``, a
-                fraction in (0, 1] — met iff balance / totalSupply >=
-                minFraction. ``evm_view_call`` (RPC EVM only) requires
-                ``contractAddress`` and ``selector`` — the canonical
+                fraction in (0, 1]: met iff balance / totalSupply >=
+                minFraction. ``evm_view_call`` (EVM chains only) requires
+                ``contractAddress`` and ``selector``, the canonical
                 signature of a single-address-argument view function
                 returning bool (e.g. ``"hasAccess(address)"``).
                 ``erc8004_agent`` (Base, chainId 8453) requires
@@ -188,12 +254,15 @@ class InsumerToolSpec(BaseToolSpec):
                 the asset code (e.g. ``"USDC"``, ``"BENJI"``) as
                 ``assetCode``. Soroban contract balances are not visible.
             sui_wallet: Sui address (0x + 64 hex chars). Required for
-                conditions with ``chainId: "sui"``. Supports native SUI
-                (``contractAddress: "native"``) and Sui-native tokens — pass
-                the fully-qualified type string (e.g.
-                ``"0xdba34672...::usdc::USDC"``) as ``contractAddress``.
+                conditions with ``chainId: "sui"``. On Sui ``contractAddress``
+                is the full coin type ``address::module::Name``: native SUI
+                is ``"0x2::sui::SUI"`` (``"native"`` is not accepted on Sui,
+                it is a 400), and other coins look like
+                ``"0xdba34672...::usdc::USDC"``.
             proof: Set to ``"merkle"`` to include EIP-1186 Merkle storage
-                proofs in results. Costs 2 credits instead of 1. Reveals raw
+                proofs in results. Available for ``token_balance`` conditions
+                on 27 of the 31 EVM chains (not ZKsync Era, Sei, Viction or
+                XDC Network). Costs 2 credits instead of 1. Reveals raw
                 balance to the caller.
             format: Set to ``"jwt"`` to include an ES256-signed JWT in the
                 response alongside the boolean result, with its ML-DSA-65
@@ -246,7 +315,7 @@ class InsumerToolSpec(BaseToolSpec):
                 fields = _str_fields.get(c.get("type"))
                 if fields:
                     updates = {
-                        f: str(c[f])
+                        f: _decimal_str(c[f])
                         for f in fields
                         if c.get(f) is not None and not isinstance(c[f], str)
                     }
@@ -314,7 +383,9 @@ class InsumerToolSpec(BaseToolSpec):
             sui_wallet: Optional Sui address (0x + 64 hex). Adds
                 institutional USDC check on Sui.
             proof: Set to ``"merkle"`` for EIP-1186 Merkle storage proofs on
-                stablecoin/governance checks. Costs 6 credits instead of 3.
+                stablecoin/governance checks, on 27 of the 31 EVM chains (not
+                ZKsync Era, Sei, Viction or XDC Network). Costs 6 credits
+                instead of 3.
 
         Returns:
             API response envelope. On success:
@@ -461,7 +532,7 @@ class InsumerToolSpec(BaseToolSpec):
             else f"{self.base_url}/.well-known/jwks.json",
             timeout=self.timeout,
         )
-        response.raise_for_status()
+        _raise_for_status(response)
         return response.json()
 
     def buy_api_key(
@@ -547,7 +618,7 @@ class InsumerToolSpec(BaseToolSpec):
             headers={"Content-Type": "application/json"},
             timeout=self.timeout,
         )
-        response.raise_for_status()
+        _raise_for_status(response)
         return response.json()
 
     def buy_credits(

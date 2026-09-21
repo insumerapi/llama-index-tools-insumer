@@ -6,9 +6,12 @@ Integration tests that hit api.insumermodel.com live are in
 in the environment.
 """
 
+import json
+from typing import Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
 from llama_index.tools.insumer import InsumerToolSpec
 
@@ -498,3 +501,65 @@ def test_buy_credits_update_wallet_flag(mock_post: MagicMock, spec: InsumerToolS
     body = mock_post.call_args.kwargs["json"]
     assert body["updateWallet"] is True
     assert "amount" not in body  # Not required for Bitcoin
+
+
+def _error_response(status: int, payload: Optional[dict] = None) -> requests.Response:
+    resp = requests.Response()
+    resp.status_code = status
+    resp.reason = "Error"
+    resp.url = "https://api.insumermodel.com/v1/attest"
+    if payload is None:
+        resp._content = b"<html>upstream error</html>"
+    else:
+        resp._content = json.dumps(payload).encode()
+    return resp
+
+
+@patch("llama_index.tools.insumer.base.requests.post")
+def test_400_message_is_surfaced(mock_post: MagicMock, spec: InsumerToolSpec) -> None:
+    message = "decimals does not match the token: the token reports 6"
+    mock_post.return_value = _error_response(
+        400, {"ok": False, "error": {"code": "invalid_request", "message": message}}
+    )
+    with pytest.raises(requests.HTTPError) as excinfo:
+        spec.attest_wallet(
+            wallet="0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+            conditions=[{
+                "type": "token_balance",
+                "contractAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+                "chainId": 1,
+                "threshold": "100",
+                "decimals": 18,
+            }],
+        )
+    assert message in str(excinfo.value)
+    assert "400" in str(excinfo.value)
+    assert excinfo.value.response.status_code == 400
+
+
+@patch("llama_index.tools.insumer.base.requests.post")
+def test_503_lists_failed_conditions(mock_post: MagicMock, spec: InsumerToolSpec) -> None:
+    mock_post.return_value = _error_response(503, {
+        "ok": False,
+        "error": {
+            "code": "rpc_failure",
+            "message": "Unable to read one or more data sources",
+            "failedConditions": [{"condition": 0, "chainId": "sui", "source": "balance_read"}],
+        },
+    })
+    with pytest.raises(requests.HTTPError) as excinfo:
+        spec.get_trust_profile(wallet="0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045")
+    text = str(excinfo.value)
+    assert "rpc_failure" in text
+    assert "failedConditions" in text
+    assert "balance_read" in text
+    assert excinfo.value.response.status_code == 503
+
+
+@patch("llama_index.tools.insumer.base.requests.get")
+def test_non_json_error_body_falls_back_to_status_error(mock_get: MagicMock) -> None:
+    mock_get.return_value = _error_response(502)
+    with pytest.raises(requests.HTTPError) as excinfo:
+        InsumerToolSpec().list_compliance_templates()
+    assert "502" in str(excinfo.value)
+    assert excinfo.value.response.status_code == 502
