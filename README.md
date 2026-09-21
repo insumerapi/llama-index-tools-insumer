@@ -109,7 +109,7 @@ Response shape:
 }
 ```
 
-Since September 2026 every attest and trust response also carries an ML-DSA-65 post-quantum companion signature (`pqSig`, `pqKid`; `pqJwt` beside `jwt`) over the same bytes the classical `kid` selects. It is additive: `sig` and `kid` are unchanged. Trust responses carry `kid: insumer-trust-v2` and `pqKid: insumer-trust-pq1`. [insumer-verify](https://www.npmjs.com/package/insumer-verify) 1.8.0 and later report the companion as a fifth verdict beside signature, condition hashes, freshness, and expiry.
+Since September 2026 every attest and trust response also carries an ML-DSA-65 post-quantum companion signature (`pqSig`, `pqKid`; `pqJwt` beside `jwt`) over the same bytes the classical `kid` selects. It is additive: `sig` and `kid` are unchanged. Trust responses carry `kid: insumer-trust-v2` and `pqKid: insumer-trust-pq1`. [insumer-verify](https://www.npmjs.com/package/insumer-verify) 1.8.1 and later report the companion as a fifth verdict beside signature, condition hashes, freshness, and expiry.
 
 Costs 1 credit per call (2 with `proof="merkle"` for EIP-1186 storage proofs, available on 27 of the 31 EVM chains: not ZKsync Era, Sei, Viction or XDC Network).
 

@@ -87,8 +87,8 @@ class InsumerToolSpec(BaseToolSpec):
       37 chains. Returns an ECDSA-signed boolean verdict per condition
       plus condition hashes for tamper detection.
     - ``get_trust_profile``: fetch a multi-dimensional wallet trust profile
-      (stablecoins, governance, NFTs, staking, plus optional
-      Solana/XRPL/Bitcoin/Tron/Stellar/Sui dimensions). Returns a signed
+      (stablecoins, governance, NFTs, staking and institutional
+      stablecoins, plus optional Solana/XRPL/Bitcoin/Tron dimensions). Returns a signed
       summary of which dimensions show activity. Up to 50 checks across 28
       chains.
     - ``list_compliance_templates``: discover pre-configured compliance
@@ -355,9 +355,10 @@ class InsumerToolSpec(BaseToolSpec):
         proof: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Fetch a multi-dimensional wallet trust profile. Returns an
-        ECDSA-signed summary across stablecoins, governance, NFTs, and
-        staking dimensions (plus Solana/XRPL/Bitcoin/Tron/Stellar/Sui
-        when those wallet addresses are provided).
+        ECDSA-signed summary across the stablecoins, governance, NFTs,
+        staking and institutional_stablecoins dimensions (plus Solana/XRPL/
+        Bitcoin/Tron dimensions when those wallet addresses are provided;
+        Stellar and Sui checks sit inside institutional_stablecoins).
 
         Trust profile reports which dimensions show activity. Each dimension
         runs a curated set of token/NFT balance checks (``balance > 0``):
@@ -404,12 +405,12 @@ class InsumerToolSpec(BaseToolSpec):
                                 "governance": {...},
                                 "nfts": {...},
                                 "staking": {...},
+                                "institutional_stablecoins": {...},   # 8 checks, always present
                                 # Optional dimensions when wallet addresses provided:
                                 "solana": {...},
                                 "xrpl": {...},
                                 "bitcoin": {...},
                                 "tron": {...},
-                                "institutional_stablecoins": {...},   # Stellar + Sui issuances
                             },
                             "summary": {
                                 "totalChecks": int,
