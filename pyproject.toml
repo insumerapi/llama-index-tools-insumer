@@ -41,9 +41,9 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://insumermodel.com/developers/"
-Repository = "https://github.com/douglasborthwick-crypto/llama-index-tools-insumer"
+Repository = "https://github.com/insumerapi/llama-index-tools-insumer"
 Documentation = "https://insumermodel.com/developers/"
-Issues = "https://github.com/douglasborthwick-crypto/llama-index-tools-insumer/issues"
+Issues = "https://github.com/insumerapi/llama-index-tools-insumer/issues"
 
 [dependency-groups]
 dev = [
