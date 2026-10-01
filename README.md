@@ -150,6 +150,8 @@ insumer.attest_wallet(
 
 Fetch the public JWKS used to sign attestation and trust responses. Enables offline verification of any result with a standard JWT/JOSE library. No API key required.
 
+To run every check the specification defines (signature, condition hashes, freshness, expiry bound to the signed `attestedAt`, and the post-quantum companion) rather than the signature alone, use [insumer-verify](https://pypi.org/project/insumer-verify/) (`pip install "insumer-verify[pq]"`): `verify_attestation(response, jwks_url=...)` and `verify_trust_profile(response, jwks_url=...)` each return a `valid` flag and a per-check breakdown. It passes the same 27 published test vectors as the npm package of the same name.
+
 The set holds five entries over two keys: the ECDSA P-256 key under three kids, followed by the ML-DSA-65 post-quantum companion key under two RFC 9964 `AKP` entries (raw key in `pub`). Match on the `kid` or `pqKid` your response carries, never on position; treat an unknown kid as unverifiable. Values below are from the live file:
 
 ```python
