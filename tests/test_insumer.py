@@ -168,16 +168,17 @@ def test_get_trust_profile(mock_post: MagicMock, spec: InsumerToolSpec) -> None:
             "trust": {
                 "id": "TRST-A1B2C",
                 "wallet": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
-                "conditionSetVersion": "v1",
+                "conditionSetVersion": "2026-10",
                 "dimensions": {
                     "stablecoins": {"checks": [], "passCount": 0, "failCount": 0, "total": 0},
                     "governance": {"checks": [], "passCount": 0, "failCount": 0, "total": 0},
                     "nfts": {"checks": [], "passCount": 0, "failCount": 0, "total": 0},
                     "staking": {"checks": [], "passCount": 0, "failCount": 0, "total": 0},
+                    "institutional_stablecoins": {"checks": [], "passCount": 0, "failCount": 0, "notEvaluatedCount": 0, "total": 0},
                 },
                 "summary": {
-                    "totalChecks": 0, "totalPassed": 0, "totalFailed": 0,
-                    "dimensionsWithActivity": 0, "dimensionsChecked": 4,
+                    "totalChecks": 0, "totalPassed": 0, "totalFailed": 0, "totalNotEvaluated": 0,
+                    "dimensionsWithActivity": 0, "dimensionsChecked": 5,
                 },
                 "profiledAt": "2026-04-16T00:00:00.000Z",
                 "expiresAt": "2026-04-16T00:30:00.000Z",
@@ -197,9 +198,9 @@ def test_get_trust_profile(mock_post: MagicMock, spec: InsumerToolSpec) -> None:
     assert body["wallet"] == wallet
     assert "solanaWallet" not in body
 
-    assert result["data"]["trust"]["conditionSetVersion"] == "v1"
+    assert result["data"]["trust"]["conditionSetVersion"] == "2026-10"
     assert set(result["data"]["trust"]["dimensions"].keys()) == {
-        "stablecoins", "governance", "nfts", "staking",
+        "stablecoins", "governance", "nfts", "staking", "institutional_stablecoins",
     }
     assert result["data"]["kid"] == "insumer-attest-v1"
     assert result["meta"]["creditsCharged"] == 3

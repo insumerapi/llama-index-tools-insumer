@@ -87,10 +87,11 @@ class InsumerToolSpec(BaseToolSpec):
       37 chains. Returns an ECDSA-signed boolean verdict per condition
       plus condition hashes for tamper detection.
     - ``get_trust_profile``: fetch a multi-dimensional wallet trust profile
-      (stablecoins, governance, NFTs, staking and institutional
-      stablecoins, plus optional Solana/XRPL/Bitcoin/Tron dimensions). Returns a signed
-      summary of which dimensions show activity. Up to 50 checks across 28
-      chains.
+      (stablecoins, governance, NFTs, staking, institutional stablecoins,
+      tokenized treasuries, stablecoin deposits, wrapped bitcoin and names,
+      plus optional Solana/XRPL/Bitcoin/Tron dimensions). Returns a signed
+      summary of which dimensions show activity. 145 base checks across 27
+      chains, up to 166 across 29.
     - ``list_compliance_templates``: discover pre-configured compliance
       templates (Coinbase Verified Account, Gitcoin Passport, etc.) usable
       directly in attest_wallet without raw EAS schema IDs. No API key
@@ -355,38 +356,50 @@ class InsumerToolSpec(BaseToolSpec):
         proof: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Fetch a multi-dimensional wallet trust profile. Returns an
-        ECDSA-signed summary across the stablecoins, governance, NFTs,
-        staking and institutional_stablecoins dimensions (plus Solana/XRPL/
-        Bitcoin/Tron dimensions when those wallet addresses are provided;
-        Stellar and Sui checks sit inside institutional_stablecoins).
+        ECDSA-signed summary across the stablecoins, governance, nfts,
+        staking, institutional_stablecoins, tokenized_treasuries,
+        stablecoin_deposits, wrapped_bitcoin and names dimensions (plus
+        solana/xrpl/bitcoin/tron dimensions when those wallet addresses are
+        provided; Stellar and Sui rows sit inside the base dimensions:
+        institutional_stablecoins, and tokenized_treasuries for USDY on Sui).
 
         Trust profile reports which dimensions show activity. Each dimension
-        runs a curated set of token/NFT balance checks (``balance > 0``):
-        45 base checks across 26 chains in 5 dimensions, up to 50 across 28
-        chains in 9 dimensions with the optional wallets. A check whose chain
-        wallet was not supplied stays in the signed profile with
+        runs a curated set of presence checks (``balance > 0``, never a
+        balance): 145 base checks across 27 chains in 9 dimensions, up to 166
+        across 29 chains in 13 dimensions with the optional wallets. A check
+        whose chain wallet was not supplied stays in the signed profile with
         ``evaluated: False`` and ``reason: "wallet_not_provided"``, counted in
-        ``notEvaluatedCount`` rather than passed or failed. The response
-        includes per-check booleans, a summary, and a signature over the whole
-        payload. 3 credits standard, 6 with proof="merkle".
+        ``notEvaluatedCount`` rather than passed or failed. The signed
+        ``conditionSetVersion`` (currently ``"2026-10"``) names the check list
+        that was run; log it, never reject on it. The response includes
+        per-check booleans, a summary, and a signature over the whole payload.
+        3 credits standard, 6 with proof="merkle".
 
         Args:
             wallet: EVM wallet address to profile (required, 0x + 40 hex).
-            solana_wallet: Optional Solana address. Adds Solana USDC check.
-            xrpl_wallet: Optional XRPL r-address. Adds XRPL stablecoin checks
-                (RLUSD, USDC).
-            bitcoin_wallet: Optional Bitcoin address. Adds native BTC balance
-                check.
-            tron_wallet: Optional Tron T-address. Adds USDT-TRC20 check on
-                Tron.
-            stellar_wallet: Optional Stellar G-address. Adds institutional
-                USDC and BENJI (Franklin) trustline checks on Stellar.
-            sui_wallet: Optional Sui address (0x + 64 hex). Adds
-                institutional USDC check on Sui.
+            solana_wallet: Optional Solana address. Adds the 14-check solana
+                dimension (USDC, EURC, OUSD, PYUSD, USD1, USDG, USDS, BUIDL,
+                USDY, WBTC, cbBTC, tBTC, JitoSOL, mSOL) and lets the
+                institutional EURCV/USDCV on Solana rows evaluate.
+            xrpl_wallet: Optional XRPL r-address. Adds the xrpl dimension
+                (RLUSD, USDC, OUSG) and lets the institutional EURCV on XRPL
+                row evaluate.
+            bitcoin_wallet: Optional Bitcoin address. Adds the bitcoin
+                dimension (one native BTC presence check).
+            tron_wallet: Optional Tron T-address. Adds the tron dimension
+                (USDT, USD1, WBTC on Tron).
+            stellar_wallet: Optional Stellar G-address. Adds no dimension; lets
+                the institutional USDC and BENJI (Franklin) trustline rows on
+                Stellar evaluate.
+            sui_wallet: Optional Sui address (0x + 64 hex). Adds no dimension;
+                lets the institutional USDC on Sui and tokenized-treasury USDY
+                on Sui rows evaluate.
             proof: Set to ``"merkle"`` for EIP-1186 Merkle storage proofs on
-                stablecoin/governance checks, on 27 of the 31 EVM chains (not
-                ZKsync Era, Sei, Viction or XDC Network). Costs 6 credits
-                instead of 3.
+                EVM token checks, on 27 of the 31 EVM chains (not ZKsync Era,
+                Sei, Viction or XDC Network). Rows whose balance is computed
+                rather than stored (Aave aTokens, BUIDL), NFT rows and non-EVM
+                rows are declined with a reason, and the premium is refunded
+                whenever no proof is delivered. Costs 6 credits instead of 3.
 
         Returns:
             API response envelope. On success:
@@ -399,13 +412,17 @@ class InsumerToolSpec(BaseToolSpec):
                         "trust": {
                             "id": "TRST-...",
                             "wallet": "0x...",
-                            "conditionSetVersion": "v1",
+                            "conditionSetVersion": "2026-10",   # dated set id, signed; log it, never reject on it
                             "dimensions": {
                                 "stablecoins": {"checks": [...], "passCount": int, "failCount": int, "notEvaluatedCount": int, "total": int},
                                 "governance": {...},
                                 "nfts": {...},
                                 "staking": {...},
-                                "institutional_stablecoins": {...},   # 8 checks, always present
+                                "institutional_stablecoins": {...},   # 8 checks, always present; Solana/XRPL/Stellar/Sui rows evaluated: false without the wallet
+                                "tokenized_treasuries": {...},        # 16 checks, always present; USDY on Sui needs sui_wallet
+                                "stablecoin_deposits": {...},         # 39 checks, always present
+                                "wrapped_bitcoin": {...},             # 12 checks, always present
+                                "names": {...},                       # 2 checks, always present
                                 # Optional dimensions when wallet addresses provided:
                                 "solana": {...},
                                 "xrpl": {...},
