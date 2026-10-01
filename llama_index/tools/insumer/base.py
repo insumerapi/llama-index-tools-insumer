@@ -364,8 +364,8 @@ class InsumerToolSpec(BaseToolSpec):
         institutional_stablecoins, and tokenized_treasuries for USDY on Sui).
 
         Trust profile reports which dimensions show activity. Each dimension
-        runs a curated set of presence checks (``balance > 0``, never a
-        balance): 145 base checks across 27 chains in 9 dimensions, up to 166
+        runs a curated set of presence checks (a balance above zero or an
+        NFT held; never the balance itself): 145 base checks across 27 chains in 9 dimensions, up to 166
         across 29 chains in 13 dimensions with the optional wallets. A check
         whose chain wallet was not supplied stays in the signed profile with
         ``evaluated: False`` and ``reason: "wallet_not_provided"``, counted in
