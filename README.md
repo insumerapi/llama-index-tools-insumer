@@ -56,7 +56,7 @@ Run wallet attestation against 1–10 conditions. Returns an ECDSA-signed verdic
 Supported condition types:
 
 - `token_balance`: ERC-20 / SPL / XRPL trust line / native BTC / TRC-20 / Stellar trustline / Sui-native ≥ threshold
-- `nft_ownership`: ERC-721/ERC-1155/XRPL NFToken holding
+- `nft_ownership`: ERC-721 / Solana NFT / XRPL NFToken holding
 - `eas_attestation`: EAS schema check (pass a `template` like `coinbase_verified_account` or a raw `schemaId`)
 - `farcaster_id`: Farcaster ID registered on Optimism
 - `ratio_to_amount`: self-scaling agent-spend rule, balance ≥ `multiple` × `amount` (EVM chains only)

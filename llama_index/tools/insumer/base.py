@@ -233,7 +233,15 @@ class InsumerToolSpec(BaseToolSpec):
                 the anchored block, all caveat enforcers recognized, and
                 time windows are satisfied. Spend/target/call limits are
                 reported as declaredLimits, not simulated; delegation
-                attestations expire in 5 minutes.
+                attestations expire in 5 minutes. An XRPL trust line
+                token condition (``chainId: "xrpl"``, ``contractAddress``
+                is the issuer r-address) requires ``currency`` (e.g.
+                ``"RLUSD"``). Currency codes are case-sensitive: send the
+                code exactly as the issuer created it and never change its
+                letter case. For XRP itself use ``contractAddress:
+                "native"`` with no ``currency``. ``taxon`` is an optional
+                XRPL NFToken taxon filter: a whole number from 0 to
+                4294967295.
             wallet: EVM wallet address (0x + 40 hex). Required if any
                 condition targets an EVM chain.
             solana_wallet: Solana wallet address (base58, 32-44 chars).
