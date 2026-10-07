@@ -523,7 +523,7 @@ class InsumerToolSpec(BaseToolSpec):
         decoder contracts. Pass the template name directly as
         ``conditions[].template`` in attest_wallet.
 
-        No API key required. Response is cached for 1 hour at the edge.
+        No API key required.
 
         Returns:
             API response envelope. On success:
