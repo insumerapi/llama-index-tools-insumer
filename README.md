@@ -64,6 +64,7 @@ Supported condition types:
 - `evm_view_call`: any single-address-argument view function returning bool, named by `selector` (e.g. `"hasAccess(address)"`) (EVM chains only)
 - `erc8004_agent`: ERC-8004 agent registration on Base, met when the wallet owns the agent NFT for `agentId` or is its registry agentWallet binding (registration is permissionless; no vetting implied)
 - `erc7710_delegation`: ERC-7710 delegation validity on Base (max 3 per call), met when the wallet is the delegate of a signed, unrevoked `delegation` from `expectedDelegator`; attestations expire in 5 minutes
+- `account_code`: the code state of the wallet address itself on an EVM chain at the anchored block, named by `expect`: `"none"` (no code: a plain key account), `"eip7702"` (the EIP-7702 delegation designator: a key that has delegated execution to a contract) or `"contract"` (any other code: a smart-contract wallet, a protocol, a token); the three states are exclusive on a chain. Optional `delegate` (an EVM address, only with `expect: "eip7702"`, a 400 otherwise) makes it met only when the designator points at it. The answer is `met` only: the code and the delegation target are never returned, in any format or mode. With `proof="merkle"` the proof is an EIP-1186 account proof (`subject: "account_code"`; `codeHash` is the proven value, never the code). vitalik.eth is EIP-7702-delegated on Base, so `{"type": "account_code", "chainId": 8453, "expect": "eip7702"}` with wallet `0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045` returns `met: true`, `evaluatedCondition: {"type": "account_code", "chainId": 8453, "expect": "eip7702", "operator": "code_state"}`, `conditionHash: 0x6c5752bfbfcfd6ba36c9cda6c74df567f0e0414da6b7a3176061ba734aeadc46`
 
 `decimals` is optional on `token_balance` and `ratio_to_amount`. Leave it out: the token's own decimals are always read from the chain. If sent it is only a cross-check, and a value that differs from the token's own decimals is rejected with a 400. `contractAddress: "native"` is for `token_balance` and `ratio_to_amount` only; `nft_ownership` needs the NFT contract address and `"native"` there is a 400.
 
@@ -117,7 +118,7 @@ A rejected request raises `requests.HTTPError`. The exception message carries th
 
 ### `get_trust_profile`
 
-Multi-dimensional wallet trust profile: stablecoins, governance, NFTs, staking, institutional stablecoins, tokenized treasuries, stablecoin deposits, wrapped bitcoin and names (plus Solana, XRPL, Bitcoin and Tron dimensions when those wallet addresses are supplied; Stellar and Sui wallets switch on rows inside the base dimensions). Returns a signed summary showing which dimensions have activity, without exposing raw balances. 145 base checks across 27 chains in 9 dimensions; up to 166 across 29 chains in 13 dimensions. Every check is a presence check. The signed `conditionSetVersion` (currently `2026-10`) names the check list run; log it, never reject on it. A check whose chain wallet was not supplied stays in the signed profile with `evaluated: false` and is counted in `notEvaluatedCount`, never as a pass or a fail.
+Multi-dimensional wallet trust profile: stablecoins, governance, NFTs, staking, institutional stablecoins, tokenized treasuries, stablecoin deposits, wrapped bitcoin, names and account (plus Solana, XRPL, Bitcoin and Tron dimensions when those wallet addresses are supplied; Stellar and Sui wallets switch on rows inside the base dimensions). Returns a signed summary showing which dimensions have activity, without exposing raw balances. 155 base checks across 27 chains in 10 dimensions; up to 176 across 29 chains in 14 dimensions. Every check is a presence check. The `account` dimension (10 checks) reports contract code or an EIP-7702 delegation present at the wallet address on Ethereum, Base, Arbitrum, Optimism and Polygon: two rows per chain, exclusive, a plain key reads false on both; which contract is never named. The signed `conditionSetVersion` (currently `2026-10-08`) names the check list run; log it, never reject on it. Dimensions come back in a fixed order: the ten base dimensions as listed, then whichever of solana, xrpl, bitcoin and tron were switched on, in that order. A check whose chain wallet was not supplied stays in the signed profile with `evaluated: false` and is counted in `notEvaluatedCount`, never as a pass or a fail.
 
 ```python
 insumer.get_trust_profile(
@@ -131,7 +132,7 @@ insumer.get_trust_profile(
 )
 ```
 
-Costs 3 credits per call (6 with `proof="merkle"`).
+Costs 3 credits per call (6 with `proof="merkle"`; account rows carry `proof.available: false` with a reason pointing at `/v1/attest`, where an `account_code` condition carries an account proof).
 
 ### `list_compliance_templates`
 

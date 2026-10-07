@@ -129,6 +129,37 @@ def test_attest_wallet_jwt_format(mock_post: MagicMock, spec: InsumerToolSpec) -
 
 
 @patch("llama_index.tools.insumer.base.requests.post")
+def test_attest_wallet_account_code_passes_expect_and_delegate_through(mock_post: MagicMock, spec: InsumerToolSpec) -> None:
+    """vitalik.eth is EIP-7702-delegated on Base: met only, no code, no target in the result."""
+    mock_post.return_value = _mock_response({
+        "ok": True,
+        "data": {
+            "attestation": {"pass": True, "results": [{
+                "condition": 0, "met": True,
+                "evaluatedCondition": {"type": "account_code", "chainId": 8453, "expect": "eip7702", "operator": "code_state"},
+                "conditionHash": "0x6c5752bfbfcfd6ba36c9cda6c74df567f0e0414da6b7a3176061ba734aeadc46",
+            }], "passCount": 1, "failCount": 0},
+            "sig": "aGVsbG8=", "kid": "insumer-attest-v2",
+        },
+        "meta": {"creditsCharged": 1},
+    })
+    result = spec.attest_wallet(
+        wallet="0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+        conditions=[
+            {"type": "account_code", "chainId": 8453, "expect": "eip7702"},
+            {"type": "account_code", "chainId": 1, "expect": "eip7702", "delegate": "0x" + "ab" * 20},
+        ],
+    )
+    sent = mock_post.call_args.kwargs["json"]["conditions"]
+    assert sent[0] == {"type": "account_code", "chainId": 8453, "expect": "eip7702"}
+    assert sent[1]["delegate"] == "0x" + "ab" * 20
+    first = result["data"]["attestation"]["results"][0]
+    assert first["met"] is True
+    assert first["evaluatedCondition"]["operator"] == "code_state"
+    assert "code" not in first
+
+
+@patch("llama_index.tools.insumer.base.requests.post")
 def test_attest_wallet_xrpl(mock_post: MagicMock, spec: InsumerToolSpec) -> None:
     mock_post.return_value = _mock_response({"ok": True, "data": {}, "meta": {}})
     spec.attest_wallet(
@@ -168,17 +199,29 @@ def test_get_trust_profile(mock_post: MagicMock, spec: InsumerToolSpec) -> None:
             "trust": {
                 "id": "TRST-A1B2C",
                 "wallet": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
-                "conditionSetVersion": "2026-10",
+                "conditionSetVersion": "2026-10-08",
                 "dimensions": {
                     "stablecoins": {"checks": [], "passCount": 0, "failCount": 0, "total": 0},
                     "governance": {"checks": [], "passCount": 0, "failCount": 0, "total": 0},
                     "nfts": {"checks": [], "passCount": 0, "failCount": 0, "total": 0},
                     "staking": {"checks": [], "passCount": 0, "failCount": 0, "total": 0},
                     "institutional_stablecoins": {"checks": [], "passCount": 0, "failCount": 0, "notEvaluatedCount": 0, "total": 0},
+                    # The live account dimension for 0x1601843c5E9bC251A3272907010AFa41Fa18347E (a contract on all five chains): first two rows.
+                    "account": {
+                        "checks": [
+                            {"label": "Contract code on Ethereum", "chainId": 1, "met": True,
+                             "evaluatedCondition": {"type": "account_code", "chainId": 1, "expect": "contract", "operator": "code_state"},
+                             "conditionHash": "0xfd7b6aa42eb012184fa54d9d5d99c6ab18481e0ce33ec0ec0e9d28d37b54ccbc"},
+                            {"label": "EIP-7702 delegation on Ethereum", "chainId": 1, "met": False,
+                             "evaluatedCondition": {"type": "account_code", "chainId": 1, "expect": "eip7702", "operator": "code_state"},
+                             "conditionHash": "0xdef6fadcef95f59f4621fa2bf788e6be0ffc0492dba22038999b8cd757adf18b"},
+                        ],
+                        "passCount": 5, "failCount": 5, "notEvaluatedCount": 0, "total": 10,
+                    },
                 },
                 "summary": {
-                    "totalChecks": 0, "totalPassed": 0, "totalFailed": 0, "totalNotEvaluated": 0,
-                    "dimensionsWithActivity": 0, "dimensionsChecked": 5,
+                    "totalChecks": 10, "totalPassed": 5, "totalFailed": 5, "totalNotEvaluated": 0,
+                    "dimensionsWithActivity": 1, "dimensionsChecked": 6,
                 },
                 "profiledAt": "2026-04-16T00:00:00.000Z",
                 "expiresAt": "2026-04-16T00:30:00.000Z",
@@ -198,10 +241,14 @@ def test_get_trust_profile(mock_post: MagicMock, spec: InsumerToolSpec) -> None:
     assert body["wallet"] == wallet
     assert "solanaWallet" not in body
 
-    assert result["data"]["trust"]["conditionSetVersion"] == "2026-10"
+    assert result["data"]["trust"]["conditionSetVersion"] == "2026-10-08"
     assert set(result["data"]["trust"]["dimensions"].keys()) == {
-        "stablecoins", "governance", "nfts", "staking", "institutional_stablecoins",
+        "stablecoins", "governance", "nfts", "staking", "institutional_stablecoins", "account",
     }
+    account = result["data"]["trust"]["dimensions"]["account"]
+    assert account["total"] == 10
+    assert account["checks"][0]["evaluatedCondition"]["operator"] == "code_state"
+    assert "code" not in account["checks"][0]
     assert result["data"]["kid"] == "insumer-attest-v1"
     assert result["meta"]["creditsCharged"] == 3
 

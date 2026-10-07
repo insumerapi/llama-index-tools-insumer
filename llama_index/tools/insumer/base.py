@@ -83,15 +83,16 @@ class InsumerToolSpec(BaseToolSpec):
     Exposes six methods as LlamaIndex tools:
 
     - ``attest_wallet``: run wallet attestation against one or more conditions
-      (token balance, NFT ownership, EAS attestation, Farcaster ID) across
-      37 chains. Returns an ECDSA-signed boolean verdict per condition
-      plus condition hashes for tamper detection.
+      (token balance, NFT ownership, EAS attestation, Farcaster ID, view
+      calls, ratios, ERC-8004 registration, ERC-7710 delegation, account
+      code state) across 37 chains. Returns an ECDSA-signed boolean verdict
+      per condition plus condition hashes for tamper detection.
     - ``get_trust_profile``: fetch a multi-dimensional wallet trust profile
       (stablecoins, governance, NFTs, staking, institutional stablecoins,
-      tokenized treasuries, stablecoin deposits, wrapped bitcoin and names,
-      plus optional Solana/XRPL/Bitcoin/Tron dimensions). Returns a signed
-      summary of which dimensions show activity. 145 base checks across 27
-      chains, up to 166 across 29.
+      tokenized treasuries, stablecoin deposits, wrapped bitcoin, names and
+      account, plus optional Solana/XRPL/Bitcoin/Tron dimensions). Returns a
+      signed summary of which dimensions show activity. 155 base checks
+      across 27 chains in 10 dimensions, up to 176 across 29 chains in 14.
     - ``list_compliance_templates``: discover pre-configured compliance
       templates (Coinbase Verified Account, Gitcoin Passport, etc.) usable
       directly in attest_wallet without raw EAS schema IDs. No API key
@@ -186,10 +187,12 @@ class InsumerToolSpec(BaseToolSpec):
 
         Wallet auth primitive: read --> evaluate --> sign. The API reads the
         relevant wallet state (token balance, NFT ownership, EAS attestation,
-        Farcaster ID, or a balance ratio), evaluates it against the
-        caller-specified condition, and returns a signed boolean. Raw balances are never returned in
-        standard mode (use proof="merkle" if you want the storage proof,
-        which reveals the balance).
+        Farcaster ID, a balance ratio, or the account's code state),
+        evaluates it against the caller-specified condition, and returns a
+        signed boolean. Raw balances are never returned in standard mode
+        (use proof="merkle" if you want the storage proof, which reveals the
+        balance); code and delegation targets are never returned in any
+        mode.
 
         Args:
             conditions: List of 1 to 10 condition objects. Each object must
@@ -197,8 +200,25 @@ class InsumerToolSpec(BaseToolSpec):
                 (33 of the 37 chains: EVM + Solana + XRPL; Bitcoin, Tron,
                 Stellar and Sui are token-balance only), ``eas_attestation``,
                 ``farcaster_id``, ``evm_view_call``, ``ratio_to_amount``,
-                ``ratio_to_supply``, ``erc8004_agent``, or
-                ``erc7710_delegation``. Token balance conditions require
+                ``ratio_to_supply``, ``erc8004_agent``,
+                ``erc7710_delegation``, or ``account_code``.
+                ``account_code`` (EVM chains only; a non-EVM ``chainId`` is
+                a 400; no ``contractAddress``) requires ``chainId`` and
+                ``expect``, the code state the wallet address itself must
+                be in at the anchored block: ``"none"`` (no code: a plain
+                key account), ``"eip7702"`` (the EIP-7702 delegation
+                designator: a key that has delegated execution to a
+                contract) or ``"contract"`` (any other code: a
+                smart-contract wallet, a protocol, a token). The three
+                states are exclusive on a chain. Optional ``delegate`` (an
+                EVM address, only with ``expect: "eip7702"``; a 400 with
+                any other expect): met iff the designator points at it. The
+                answer is ``met`` only: the code and the delegation target
+                are never returned, in any format or mode; a supplied
+                ``delegate`` is echoed (lowercase) inside the signed
+                ``evaluatedCondition`` (``{type, chainId, expect, operator:
+                "code_state"}``). Example: ``{"type": "account_code",
+                "chainId": 8453, "expect": "eip7702"}``. Token balance conditions require
                 ``contractAddress``, ``chainId`` and ``threshold`` (a decimal
                 string in token units, e.g. ``"100"``; a number is coerced).
                 ``decimals`` is optional. Leave it out: the token's own
@@ -268,11 +288,19 @@ class InsumerToolSpec(BaseToolSpec):
                 is ``"0x2::sui::SUI"`` (``"native"`` is not accepted on Sui,
                 it is a 400), and other coins look like
                 ``"0xdba34672...::usdc::USDC"``.
-            proof: Set to ``"merkle"`` to include EIP-1186 Merkle storage
-                proofs in results. Available for ``token_balance`` conditions
-                on 27 of the 31 EVM chains (not ZKsync Era, Sei, Viction or
-                XDC Network). Costs 2 credits instead of 1. Reveals raw
-                balance to the caller.
+            proof: Set to ``"merkle"`` to include EIP-1186 Merkle proofs in
+                results: a storage proof of the balance slot for a ``token_balance``
+                or ``ratio_to_amount`` condition (an account proof, ``subject:
+                "account_balance"``, when ``contractAddress`` is ``"native"``), a
+                revocation-slot proof (``subject: "delegation_revocation"``) for an
+                ``erc7710_delegation`` condition, an account proof (``subject: "account_code"``; fields
+                ``blockNumber``, ``nonce``, ``balance``, ``storageHash``,
+                ``codeHash``, ``accountProof``) for an ``account_code``
+                condition, on 27 of the 31 EVM chains (not ZKsync Era, Sei,
+                Viction or XDC Network). Costs 2 credits instead of 1,
+                refunded to 1 when no proof is delivered. A storage proof
+                reveals the raw balance to the caller; an account proof
+                carries ``codeHash``, never the code.
             format: Set to ``"jwt"`` to include an ES256-signed JWT in the
                 response alongside the boolean result, with its ML-DSA-65
                 sibling ``pqJwt`` beside it.
@@ -366,22 +394,30 @@ class InsumerToolSpec(BaseToolSpec):
         """Fetch a multi-dimensional wallet trust profile. Returns an
         ECDSA-signed summary across the stablecoins, governance, nfts,
         staking, institutional_stablecoins, tokenized_treasuries,
-        stablecoin_deposits, wrapped_bitcoin and names dimensions (plus
-        solana/xrpl/bitcoin/tron dimensions when those wallet addresses are
-        provided; Stellar and Sui rows sit inside the base dimensions:
+        stablecoin_deposits, wrapped_bitcoin, names and account dimensions
+        (plus solana/xrpl/bitcoin/tron dimensions when those wallet addresses
+        are provided; Stellar and Sui rows sit inside the base dimensions:
         institutional_stablecoins, and tokenized_treasuries for USDY on Sui).
 
         Trust profile reports which dimensions show activity. Each dimension
-        runs a curated set of presence checks (a balance above zero or an
-        NFT held; never the balance itself): 145 base checks across 27 chains in 9 dimensions, up to 166
-        across 29 chains in 13 dimensions with the optional wallets. A check
+        runs a curated set of presence checks (a balance above zero, an NFT
+        held, or a code state present; never the balance or the code
+        itself): 155 base checks across 27 chains in 10 dimensions, up to 176
+        across 29 chains in 14 dimensions with the optional wallets. The
+        account dimension (10 checks) reports contract code or an EIP-7702
+        delegation present at the wallet address on Ethereum, Base, Arbitrum,
+        Optimism and Polygon: two rows per chain, exclusive, a plain key
+        reads false on both; which contract is never named. A check
         whose chain wallet was not supplied stays in the signed profile with
         ``evaluated: False`` and ``reason: "wallet_not_provided"``, counted in
         ``notEvaluatedCount`` rather than passed or failed. The signed
-        ``conditionSetVersion`` (currently ``"2026-10"``) names the check list
-        that was run; log it, never reject on it. The response includes
-        per-check booleans, a summary, and a signature over the whole payload.
-        3 credits standard, 6 with proof="merkle".
+        ``conditionSetVersion`` (currently ``"2026-10-08"``) names the check
+        list that was run; log it, never reject on it. Dimensions come back
+        in a fixed order: the base dimensions in the order above, then
+        whichever of solana, xrpl, bitcoin and tron were switched on, in that
+        order. The response includes per-check booleans, a summary, and a
+        signature over the whole payload. 3 credits standard, 6 with
+        proof="merkle".
 
         Args:
             wallet: EVM wallet address to profile (required, 0x + 40 hex).
@@ -405,9 +441,11 @@ class InsumerToolSpec(BaseToolSpec):
             proof: Set to ``"merkle"`` for EIP-1186 Merkle storage proofs on
                 EVM token checks, on 27 of the 31 EVM chains (not ZKsync Era,
                 Sei, Viction or XDC Network). Rows whose balance is computed
-                rather than stored (Aave aTokens, BUIDL), NFT rows and non-EVM
-                rows are declined with a reason, and the premium is refunded
-                whenever no proof is delivered. Costs 6 credits instead of 3.
+                rather than stored (Aave aTokens, BUIDL), NFT rows, non-EVM
+                rows and account rows (``proof.available: False`` with a
+                reason pointing at ``/v1/attest``) are declined with a
+                reason, and the premium is refunded whenever no proof is
+                delivered. Costs 6 credits instead of 3.
 
         Returns:
             API response envelope. On success:
@@ -420,8 +458,8 @@ class InsumerToolSpec(BaseToolSpec):
                         "trust": {
                             "id": "TRST-...",
                             "wallet": "0x...",
-                            "conditionSetVersion": "2026-10",   # dated set id, signed; log it, never reject on it
-                            "dimensions": {
+                            "conditionSetVersion": "2026-10-08",   # dated set id, signed; log it, never reject on it
+                            "dimensions": {                        # fixed order: these ten, then the optional ones switched on
                                 "stablecoins": {"checks": [...], "passCount": int, "failCount": int, "notEvaluatedCount": int, "total": int},
                                 "governance": {...},
                                 "nfts": {...},
@@ -431,7 +469,8 @@ class InsumerToolSpec(BaseToolSpec):
                                 "stablecoin_deposits": {...},         # 39 checks, always present
                                 "wrapped_bitcoin": {...},             # 12 checks, always present
                                 "names": {...},                       # 2 checks, always present
-                                # Optional dimensions when wallet addresses provided:
+                                "account": {...},                     # 10 checks, always present: contract code / EIP-7702 delegation on Ethereum, Base, Arbitrum, Optimism, Polygon
+                                # Optional dimensions when wallet addresses provided, in this order:
                                 "solana": {...},
                                 "xrpl": {...},
                                 "bitcoin": {...},
