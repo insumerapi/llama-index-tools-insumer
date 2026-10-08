@@ -100,7 +100,7 @@ class InsumerToolSpec(BaseToolSpec):
       required.
     - ``get_jwks``: fetch the JSON Web Key Set used to verify signatures on
       attestation and trust responses: the ECDSA P-256 key under three kids
-      plus the ML-DSA-65 post-quantum companion key under two RFC 9964 AKP
+      plus the ML-DSA-65 post-quantum key under two RFC 9964 AKP
       entries. No API key required. Enables offline verification.
     - ``buy_api_key``: let an agent purchase its own new API key on-chain with
       USDC, USDT, or BTC, no human in the loop. Wallet address is the
@@ -326,7 +326,7 @@ class InsumerToolSpec(BaseToolSpec):
                         "sig": str,                # ECDSA P-256, base64 P1363
                         "kid": str,                # "insumer-attest-v2" on v2 keys;
                                                    # "insumer-attest-v1" on v1 keys
-                        "pqSig": str,              # ML-DSA-65 post-quantum companion,
+                        "pqSig": str,              # ML-DSA-65 post-quantum signature,
                                                    # base64; additive, sig/kid unchanged
                         "pqKid": str,              # "insumer-attest-pq1"
                         "jwt": str,                # if format="jwt"
@@ -489,7 +489,7 @@ class InsumerToolSpec(BaseToolSpec):
                         "sig": str,                # ECDSA P-256, base64 P1363
                         "kid": str,                # "insumer-trust-v2" on v2 keys;
                                                    # "insumer-attest-v1" on v1 keys
-                        "pqSig": str,              # ML-DSA-65 post-quantum companion,
+                        "pqSig": str,              # ML-DSA-65 post-quantum signature,
                                                    # base64; additive, sig/kid unchanged
                         "pqKid": str,              # "insumer-trust-pq1"
                     },
@@ -551,7 +551,7 @@ class InsumerToolSpec(BaseToolSpec):
         signatures on attestation and trust responses.
 
         Standard JWKS format, five entries over two keys: the ECDSA P-256 key
-        under three kids, followed by the ML-DSA-65 post-quantum companion key
+        under three kids, followed by the ML-DSA-65 post-quantum key
         under two RFC 9964 ``AKP`` entries (raw key in ``pub``). Match on the
         ``kid`` or ``pqKid`` your response carries, never on position; treat
         an unknown kid as unverifiable. The EC entries work with any JWT/JOSE

@@ -102,7 +102,7 @@ Response shape:
         },
         "sig": "...",              # ECDSA P-256 signature, base64 P1363
         "kid": "insumer-attest-v2",   # v2 keys; v1 keys return insumer-attest-v1
-        "pqSig": "...",            # ML-DSA-65 post-quantum companion signature, base64
+        "pqSig": "...",            # ML-DSA-65 post-quantum signature, base64
         "pqKid": "insumer-attest-pq1",
         "jwt": "...",              # only with format="jwt"; its ML-DSA-65 sibling pqJwt sits beside it
     },
@@ -110,7 +110,7 @@ Response shape:
 }
 ```
 
-Every attest and trust response also carries an ML-DSA-65 post-quantum companion signature (`pqSig`, `pqKid`; `pqJwt` beside `jwt`) over the same bytes the classical `kid` selects. It is additive: `sig` and `kid` are unchanged. Trust responses carry `kid: insumer-trust-v2` and `pqKid: insumer-trust-pq1`. [insumer-verify](https://www.npmjs.com/package/insumer-verify) 1.8.1 and later report the companion as a fifth verdict beside signature, condition hashes, freshness, and expiry.
+Every attest and trust response is signed twice: ES256 and a post-quantum ML-DSA-65 signature (`pqSig`, `pqKid`; `pqJwt` beside `jwt`) over the same bytes the classical `kid` selects. It is additive: `sig` and `kid` are unchanged. Trust responses carry `kid: insumer-trust-v2` and `pqKid: insumer-trust-pq1`. [insumer-verify](https://www.npmjs.com/package/insumer-verify) 1.8.1 and later report the post-quantum signature as a fifth verdict beside signature, condition hashes, freshness, and expiry.
 
 Costs 1 credit per call (2 with `proof="merkle"` for EIP-1186 storage proofs, available on 27 of the 31 EVM chains: not ZKsync Era, Sei, Viction or XDC Network).
 
@@ -151,9 +151,9 @@ insumer.attest_wallet(
 
 Fetch the public JWKS used to sign attestation and trust responses. Enables offline verification of any result with a standard JWT/JOSE library. No API key required.
 
-To run every check the specification defines (signature, condition hashes, freshness, expiry bound to the signed `attestedAt`, and the post-quantum companion) rather than the signature alone, use [insumer-verify](https://pypi.org/project/insumer-verify/) (`pip install "insumer-verify[pq]"`): `verify_attestation(response, jwks_url=...)` and `verify_trust_profile(response, jwks_url=...)` each return a `valid` flag and a per-check breakdown. It passes the same 27 published test vectors as the npm package of the same name.
+To run every check the specification defines (signature, condition hashes, freshness, expiry bound to the signed `attestedAt`, and the post-quantum signature) rather than the signature alone, use [insumer-verify](https://pypi.org/project/insumer-verify/) (`pip install "insumer-verify[pq]"`): `verify_attestation(response, jwks_url=...)` and `verify_trust_profile(response, jwks_url=...)` each return a `valid` flag and a per-check breakdown. It passes the same 27 published test vectors as the npm package of the same name.
 
-The set holds five entries over two keys: the ECDSA P-256 key under three kids, followed by the ML-DSA-65 post-quantum companion key under two RFC 9964 `AKP` entries (raw key in `pub`). Match on the `kid` or `pqKid` your response carries, never on position; treat an unknown kid as unverifiable. Values below are from the live file:
+The set holds five entries over two keys: the ECDSA P-256 key under three kids, followed by the ML-DSA-65 post-quantum key under two RFC 9964 `AKP` entries (raw key in `pub`). Match on the `kid` or `pqKid` your response carries, never on position; treat an unknown kid as unverifiable. Values below are from the live file:
 
 ```python
 jwks = insumer.get_jwks()
@@ -231,12 +231,17 @@ Wallet auth is the primitive. Condition-based access is the category. Token gati
 - **No identity-first**: a wallet address and a condition are enough.
 - **No static credentials**: every response has an expiry and is re-checkable.
 
+## Other ways to reach the same API
+
+- **Hosted MCP server**: `https://api.insumermodel.com/mcp` (MCP streamable HTTP). Connect by URL from ChatGPT, claude.ai or any hosted agent, with no install and no key. It serves ten tools on a shared daily allowance: `insumer_attest`, `insumer_wallet_trust`, `insumer_batch_wallet_trust`, `insumer_compliance_templates`, `insumer_jwks`, `insumer_list_merchants`, `insumer_get_merchant`, `insumer_list_tokens`, `insumer_check_discount` and `insumer_validate_code` (no ACP/UCP discount issuance or merchant setup). In LlamaIndex, the same endpoint can also be loaded as tools through [`llama-index-tools-mcp`](https://pypi.org/project/llama-index-tools-mcp/). For all 27 tools on your own key: `npx -y mcp-server-insumer`.
+- **x402 pay-per-call**: this tool spec authenticates with an API key; the attest and trust endpoints also take x402 with no key at all (see [No key at all: x402 pay-per-call](#no-key-at-all-x402-pay-per-call) above). The discount endpoints do not take x402.
+
 ## Learn more
 
 - Docs: [insumermodel.com/developers/](https://insumermodel.com/developers/)
 - OpenAPI spec: [insumermodel.com/openapi.yaml](https://insumermodel.com/openapi.yaml)
 - Public JWKS: [api.insumermodel.com/.well-known/jwks.json](https://api.insumermodel.com/.well-known/jwks.json)
-- Companion packages: `langchain-insumer` (LangChain), `mcp-server-insumer` (Model Context Protocol), `@insumermodel/plugin-eliza` (ElizaOS)
+- Related packages: `langchain-insumer` (LangChain), `mcp-server-insumer` (Model Context Protocol), `@insumermodel/plugin-eliza` (ElizaOS)
 
 ## License
 
