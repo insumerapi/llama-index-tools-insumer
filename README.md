@@ -1,6 +1,6 @@
 # LlamaIndex Tools Integration: InsumerAPI
 
-Wallet auth and condition-based access for LlamaIndex agents. Across 37 chains: read → evaluate → sign, returning an ECDSA-signed boolean your agent can verify offline against the public JWKS. Boolean, not balance: the API never exposes wallet holdings, only a signed yes-or-no against the conditions you configure.
+Wallet auth and condition-based access for LlamaIndex agents. Across 37 chains: read → evaluate → sign → keep, returning an ECDSA-signed boolean your agent can verify offline against the public JWKS. Boolean, not balance: the API never exposes wallet holdings, only a signed yes-or-no against the conditions you configure.
 
 Part of [InsumerAPI](https://insumermodel.com/developers/). No secrets. No identity-first. No static credentials.
 
@@ -14,7 +14,7 @@ pip install llama-index-llms-openai
 
 ## Quickstart
 
-**Get a key — no signup, no dashboard, no password.** Two paths, both return an `insr_live_...` key instantly with 10 verification credits and 100 reads/day:
+**Get a key: no signup, no dashboard, no password.** Two paths, both return an `insr_live_...` key instantly with 10 free verifications plus 100 requests a day:
 
 ```bash
 curl -X POST https://api.insumermodel.com/v1/keys/create \
@@ -22,7 +22,7 @@ curl -X POST https://api.insumermodel.com/v1/keys/create \
     -d '{"email": "you@example.com", "appName": "my-agent", "tier": "free"}'
 ```
 
-Or enter your email on [insumermodel.com](https://insumermodel.com/?utm_source=pypi-llama-index-tools-insumer) — the key appears inline. Already have a key? Manage it at [insumermodel.com/developers/account/](https://insumermodel.com/developers/account/?utm_source=pypi-llama-index-tools-insumer).
+Or enter your email on [insumermodel.com](https://insumermodel.com/?utm_source=pypi-llama-index-tools-insumer), and the key appears inline. Already have a key? Manage it at [insumermodel.com/developers/account/](https://insumermodel.com/developers/account/?utm_source=pypi-llama-index-tools-insumer).
 
 Then use the tool spec in any LlamaIndex agent:
 
@@ -83,7 +83,7 @@ insumer.attest_wallet(
 )
 ```
 
-> **`token_balance` thresholds are decimal strings** — send `"threshold": "100"`, not `100`. Keys created from 2026-06-10 sign with `kid: insumer-attest-v2` and reject a JSON number with a `400` (a string works on both v1 and v2 keys). This tool coerces a number to a string for you.
+> **`token_balance` thresholds are decimal strings**: send `"threshold": "100"`, not `100`. Keys created from 2026-06-10 sign with `kid: insumer-attest-v2` and reject a JSON number with a `400` (a string works on both v1 and v2 keys). This tool coerces a number to a string for you.
 
 Response shape:
 
@@ -101,7 +101,7 @@ Response shape:
             "expiresAt": "2026-04-16T...",  # +30 min
         },
         "sig": "...",              # ECDSA P-256 signature, base64 P1363
-        "kid": "insumer-attest-v2",   # keys minted today; pre-cutover keys return insumer-attest-v1
+        "kid": "insumer-attest-v2",   # v2 keys; v1 keys return insumer-attest-v1
         "pqSig": "...",            # ML-DSA-65 post-quantum companion signature, base64
         "pqKid": "insumer-attest-pq1",
         "jwt": "...",              # only with format="jwt"; its ML-DSA-65 sibling pqJwt sits beside it
@@ -110,7 +110,7 @@ Response shape:
 }
 ```
 
-Since September 2026 every attest and trust response also carries an ML-DSA-65 post-quantum companion signature (`pqSig`, `pqKid`; `pqJwt` beside `jwt`) over the same bytes the classical `kid` selects. It is additive: `sig` and `kid` are unchanged. Trust responses carry `kid: insumer-trust-v2` and `pqKid: insumer-trust-pq1`. [insumer-verify](https://www.npmjs.com/package/insumer-verify) 1.8.1 and later report the companion as a fifth verdict beside signature, condition hashes, freshness, and expiry.
+Every attest and trust response also carries an ML-DSA-65 post-quantum companion signature (`pqSig`, `pqKid`; `pqJwt` beside `jwt`) over the same bytes the classical `kid` selects. It is additive: `sig` and `kid` are unchanged. Trust responses carry `kid: insumer-trust-v2` and `pqKid: insumer-trust-pq1`. [insumer-verify](https://www.npmjs.com/package/insumer-verify) 1.8.1 and later report the companion as a fifth verdict beside signature, condition hashes, freshness, and expiry.
 
 Costs 1 credit per call (2 with `proof="merkle"` for EIP-1186 storage proofs, available on 27 of the 31 EVM chains: not ZKsync Era, Sei, Viction or XDC Network).
 
@@ -174,9 +174,9 @@ jwks = insumer.get_jwks()
 
 ### `buy_api_key`
 
-Agentic commerce: let an agent purchase its own new API key on-chain with USDC or BTC. The transaction sender wallet becomes the registered identity. No email, no signup flow, no human in the loop. No API key required to call — the payment *is* the auth.
+Agentic commerce: let an agent purchase its own new API key on-chain with USDC, USDT or BTC. The transaction sender wallet becomes the registered identity. No email, no signup flow, no human in the loop. No API key required to call: the payment *is* the auth.
 
-Pre-requisite: broadcast a USDC or BTC transfer to the platform wallet first, then submit the transaction hash here.
+Pre-requisite: broadcast a USDC, USDT or BTC transfer to the platform wallet first, then submit the transaction hash here.
 
 ```python
 # After the agent broadcasts a 100 USDC transfer on Base to the platform wallet:
@@ -186,14 +186,16 @@ result = InsumerToolSpec().buy_api_key(
     app_name="my-agent",
     amount=100.0,              # USDC amount; not required for Bitcoin
 )
-new_key = result["data"]["key"]   # insr_live_... — shown once, save it
+new_key = result["data"].get("key")   # insr_live_..., shown once; omitted when the
+                                      # EVM wallet receives the Insumer Access pass
+                                      # (the default): it then signs with Authorization: Wallet
 ```
 
-One key per wallet — if the sending wallet already has a self-serve key, the API returns 409 and asks you to top up the existing key via `buy_credits` instead.
+One key per wallet: if the sending wallet already has a self-serve key, the API returns 409 and asks you to top up the existing key via `buy_credits` instead.
 
 ### `buy_credits`
 
-Top up credits on an existing API key (the one you passed to `InsumerToolSpec`) with a USDC or BTC payment. Same pattern: broadcast the transfer, submit the `tx_hash`.
+Top up credits on an existing API key (the one you passed to `InsumerToolSpec`) with a USDC, USDT or BTC payment. Same pattern: broadcast the transfer, submit the `tx_hash`.
 
 ```python
 insumer.buy_credits(
@@ -205,9 +207,9 @@ insumer.buy_credits(
 
 ## No key at all: x402 pay-per-call
 
-This tool spec authenticates with an API key (free tier: 10 credits via `POST /v1/keys/create`, or on-chain purchase via `buy_api_key`). If your agent wants zero signup of any kind, the same core endpoints — `POST /v1/attest`, `POST /v1/trust`, `POST /v1/trust/batch` — also accept [x402](https://www.x402.org) payments directly: call with no credentials, receive a 402 quote, sign an EIP-3009 USDC authorization on Base for the exact quoted amount, retry with the `X-PAYMENT` header. $0.05 per attestation ($0.10 with a Merkle proof), settlement is gasless for the payer. That flow lives outside this package (it needs wallet signing, not an LLM tool), but the responses are identical — same signed attestations, verifiable against the same JWKS.
+This tool spec authenticates with an API key (free tier: 10 free verifications plus 100 requests a day via `POST /v1/keys/create`, or on-chain purchase via `buy_api_key`). If your agent wants zero signup of any kind, the same core endpoints (`POST /v1/attest`, `POST /v1/trust`, `POST /v1/trust/batch`) also accept [x402](https://www.x402.org) payments directly: call with no credentials, receive a 402 quote, sign a USDC payment for the exact quoted amount on Base, Polygon, Arbitrum, Arc or Solana (an EIP-3009 authorization on the EVM networks), retry with the `PAYMENT-SIGNATURE` header. $0.05 per attestation ($0.10 with a Merkle proof), settlement is gasless for the payer. That flow lives outside this package (it needs wallet signing, not an LLM tool), but the responses are identical: same signed attestations, verifiable against the same JWKS.
 
-Pay-per-call wallets that reach $1.00 in cumulative spend become eligible to claim a soulbound Insumer Access pass (nothing mints unless the wallet asks — its first wallet-auth request is the claim), which unlocks prepaid credit rates ($0.04–$0.02/call) and single-round-trip calls. Details: [insumermodel.com/llms.txt](https://insumermodel.com/llms.txt).
+A pay-per-call wallet whose cumulative spend qualifies is told so in the response and can then claim a soulbound Insumer Access pass (nothing mints unless the wallet asks; its first wallet-auth request is the claim), which unlocks prepaid credit rates ($0.04–$0.02/call) and single-round-trip calls. Details: [insumermodel.com/llms.txt](https://insumermodel.com/llms.txt).
 
 ## Supported chains
 

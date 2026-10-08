@@ -1,9 +1,10 @@
 """InsumerAPI tool spec for LlamaIndex.
 
 Wallet auth and condition-based access across 37 chains.
-Read --> evaluate --> sign. Returns an ECDSA-signed boolean you can verify
-offline against our public JWKS. Boolean, not balance: the API never exposes
-wallet holdings, only a signed yes-or-no against the conditions you configure.
+Read → evaluate → sign → keep. Returns an ECDSA-signed boolean you
+can verify offline against our public JWKS. Boolean, not balance: the API
+never exposes wallet holdings, only a signed yes-or-no against the
+conditions you configure.
 """
 
 import os
@@ -185,11 +186,11 @@ class InsumerToolSpec(BaseToolSpec):
         """Run wallet attestation against 1-10 conditions. Returns an
         ECDSA-signed verdict per condition.
 
-        Wallet auth primitive: read --> evaluate --> sign. The API reads the
-        relevant wallet state (token balance, NFT ownership, EAS attestation,
-        Farcaster ID, a balance ratio, or the account's code state),
-        evaluates it against the caller-specified condition, and returns a
-        signed boolean. Raw balances are never returned in standard mode
+        Wallet auth primitive: read → evaluate → sign → keep. The API
+        reads the relevant wallet state (token balance, NFT ownership, EAS
+        attestation, Farcaster ID, a balance ratio, or the account's code
+        state), evaluates it against the caller-specified condition, and
+        returns a signed boolean. Raw balances are never returned in standard mode
         (use proof="merkle" if you want the storage proof, which reveals the
         balance); code and delegation targets are never returned in any
         mode.
@@ -241,13 +242,13 @@ class InsumerToolSpec(BaseToolSpec):
                 signature of a single-address-argument view function
                 returning bool (e.g. ``"hasAccess(address)"``).
                 ``erc8004_agent`` (Base, chainId 8453) requires
-                ``agentId``, a uint256 decimal string — met iff the wallet
+                ``agentId``, a uint256 decimal string: met iff the wallet
                 owns the agent NFT or is the registry's agentWallet binding
                 (registration is permissionless; no vetting implied).
                 ``erc7710_delegation`` (Base, chainId 8453, max 3 per
                 call) requires ``delegationManager``,
                 ``expectedDelegator``, and ``delegation`` ({delegator,
-                delegate, authority, caveats, salt, signature}) — met iff
+                delegate, authority, caveats, salt, signature}): met iff
                 the wallet is the delegate, the delegator matches, the
                 EIP-712 signature verifies (EOA or ERC-1271), unrevoked at
                 the anchored block, all caveat enforcers recognized, and
@@ -279,7 +280,7 @@ class InsumerToolSpec(BaseToolSpec):
             stellar_wallet: Stellar address (G-prefixed, 56 chars). Required
                 for conditions with ``chainId: "stellar"``. Supports native
                 XLM (``contractAddress: "native"``) and classic trustline
-                assets — pass the issuer G-address as ``contractAddress`` and
+                assets: pass the issuer G-address as ``contractAddress`` and
                 the asset code (e.g. ``"USDC"``, ``"BENJI"``) as
                 ``assetCode``. Soroban contract balances are not visible.
             sui_wallet: Sui address (0x + 64 hex chars). Required for
@@ -323,12 +324,10 @@ class InsumerToolSpec(BaseToolSpec):
                             "expiresAt": ISO8601,
                         },
                         "sig": str,                # ECDSA P-256, base64 P1363
-                        "kid": str,                # "insumer-attest-v2" on keys minted
-                                                   # today; "insumer-attest-v1" on
-                                                   # pre-cutover keys
+                        "kid": str,                # "insumer-attest-v2" on v2 keys;
+                                                   # "insumer-attest-v1" on v1 keys
                         "pqSig": str,              # ML-DSA-65 post-quantum companion,
-                                                   # base64, carried since September
-                                                   # 2026; additive, sig/kid unchanged
+                                                   # base64; additive, sig/kid unchanged
                         "pqKid": str,              # "insumer-attest-pq1"
                         "jwt": str,                # if format="jwt"
                         "pqJwt": str,              # if format="jwt": ML-DSA-65 sibling
@@ -338,7 +337,7 @@ class InsumerToolSpec(BaseToolSpec):
         """
         # v2 keys require agent-supplied quantities as decimal strings (full precision,
         # no float in signed bytes); v1 keys accept either. Coerce numbers to strings so
-        # the request works on any key. (str() only — the builtin format() is shadowed by
+        # the request works on any key. (str() only: the builtin format() is shadowed by
         # the `format` parameter of this method.)
         #   token_balance.threshold, ratio_to_amount.multiple/amount, ratio_to_supply.minFraction.
         _str_fields = {
@@ -488,12 +487,10 @@ class InsumerToolSpec(BaseToolSpec):
                             "expiresAt": ISO8601,
                         },
                         "sig": str,                # ECDSA P-256, base64 P1363
-                        "kid": str,                # "insumer-trust-v2" on keys minted
-                                                   # today; "insumer-attest-v1" on
-                                                   # pre-cutover keys
+                        "kid": str,                # "insumer-trust-v2" on v2 keys;
+                                                   # "insumer-attest-v1" on v1 keys
                         "pqSig": str,              # ML-DSA-65 post-quantum companion,
-                                                   # base64, carried since September
-                                                   # 2026; additive, sig/kid unchanged
+                                                   # base64; additive, sig/kid unchanged
                         "pqKid": str,              # "insumer-trust-pq1"
                     },
                     "meta": {"creditsRemaining": int, "creditsCharged": int, ...},
@@ -618,11 +615,11 @@ class InsumerToolSpec(BaseToolSpec):
         USDC and USDT are auto-detected on EVM chains and Solana; USDT-TRC20
         is supported on Tron.
 
-        One key per wallet — if the sending wallet already has a self-serve
+        One key per wallet: if the sending wallet already has a self-serve
         key, the API returns 409 and asks you to top up the existing key
         with ``buy_credits`` instead.
 
-        Keys from this endpoint have a 30-day expiry and tier ``paid``.
+        Keys from this endpoint have tier ``paid`` and no fixed expiry.
 
         Args:
             tx_hash: Transaction hash of the USDC, USDT, or BTC transfer to the
@@ -633,13 +630,17 @@ class InsumerToolSpec(BaseToolSpec):
                 string ``"bitcoin"`` for BTC.
             app_name: Human-readable name for the key (max 100 chars).
             amount: Stablecoin amount paid in USD (required for USDC, USDT,
-                and USDT-TRC20 chains). Not required for Bitcoin — the USD
-                value is derived from the on-chain BTC amount and a price
-                feed.
+                and USDT-TRC20 chains). Not required for Bitcoin: the USD
+                value is derived from the on-chain BTC amount at market
+                rate.
             channel: Optional tracking tag for the purchase channel.
 
         Returns:
-            API response envelope with the newly issued raw API key:
+            API response envelope. ``key`` (the raw API key, shown once) is
+            omitted when the paying EVM wallet receives the Insumer Access
+            pass on this purchase, the default; that wallet then
+            authenticates with ``Authorization: Wallet``. It is returned on
+            non-EVM purchases and whenever the pass cannot be delivered:
 
             .. code-block:: python
 
@@ -647,7 +648,7 @@ class InsumerToolSpec(BaseToolSpec):
                     "ok": True,
                     "data": {
                         "success": True,
-                        "key": "insr_live_...",           # the raw key — show once
+                        "key": "insr_live_...",           # the raw key; show once
                         "name": str,
                         "tier": "paid",
                         "dailyLimit": 10000,
@@ -656,12 +657,11 @@ class InsumerToolSpec(BaseToolSpec):
                         "effectiveRate": "$0.04/credit",
                         "chainName": str,
                         "registeredWallet": "0x...",
-                        "expiresAt": ISO8601,              # +30 days
                         # Bitcoin only:
-                        "btcPaid": float, "btcPrice": float, "usdEquivalent": float,
-                        # USDC or USDT (the field is named usdcPaid for backward
-                        # compatibility but reflects either stablecoin):
-                        "usdcPaid": float,
+                        "btcPaid": str, "btcPrice": float, "usdEquivalent": str,
+                        # USDC or USDT (usdcPaid carries the stablecoin amount,
+                        # USDC or USDT):
+                        "usdcPaid": str,
                     },
                     "meta": {...},
                 }
@@ -675,7 +675,7 @@ class InsumerToolSpec(BaseToolSpec):
             body["amount"] = amount
         if channel:
             body["channel"] = channel
-        # This endpoint is public (no auth) — the transaction sender wallet
+        # This endpoint is public (no auth); the transaction sender wallet
         # is the identity.
         response = requests.post(
             f"{self.base_url}/v1/keys/buy",
@@ -710,9 +710,9 @@ class InsumerToolSpec(BaseToolSpec):
                 Solana, the string ``"tron"`` for USDT-TRC20 on Tron, or
                 the string ``"bitcoin"`` for BTC.
             amount: Stablecoin amount paid in USD (required for USDC, USDT,
-                and USDT-TRC20 chains). Not required for Bitcoin — USD
-                value is derived from the on-chain BTC amount and a price
-                feed.
+                and USDT-TRC20 chains). Not required for Bitcoin: USD
+                value is derived from the on-chain BTC amount at market
+                rate.
             update_wallet: If the transaction sender differs from the wallet
                 currently registered on this API key, set to ``True`` to
                 rebind the registered wallet to the new sender. Defaults to
@@ -730,11 +730,11 @@ class InsumerToolSpec(BaseToolSpec):
                         "totalCredits": int,
                         "effectiveRate": "$0.04/credit",
                         "chainName": str,
-                        # USDC or USDT (field named usdcPaid for backward
-                        # compatibility but reflects either stablecoin):
-                        "usdcPaid": float,
+                        # USDC or USDT (usdcPaid carries the stablecoin amount,
+                        # USDC or USDT):
+                        "usdcPaid": str,
                         # Bitcoin:
-                        "btcPaid": float, "btcPrice": float, "usdEquivalent": float,
+                        "btcPaid": str, "btcPrice": float, "usdEquivalent": str,
                     },
                     "meta": {...},
                 }

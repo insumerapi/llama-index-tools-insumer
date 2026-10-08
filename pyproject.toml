@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "llama-index-tools-insumer"
-version = "0.6.1"
+version = "0.6.2"
 description = "LlamaIndex tool spec for InsumerAPI: wallet auth and condition-based access across 37 chains"
 authors = [{name = "Douglas Borthwick", email = "douglas@insumermodel.com"}]
 requires-python = ">=3.10,<4.0"
