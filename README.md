@@ -1,5 +1,7 @@
 # LlamaIndex Tools Integration: InsumerAPI
 
+[![PyPI](https://img.shields.io/pypi/v/llama-index-tools-insumer)](https://pypi.org/project/llama-index-tools-insumer/) [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/insumerapi/llama-index-tools-insumer/blob/main/LICENSE)
+
 Wallet auth and condition-based access for LlamaIndex agents. Across 37 chains: read → evaluate → sign → keep, returning an ECDSA-signed boolean your agent can verify offline against the public JWKS. Boolean, not balance: the API never exposes wallet holdings, only a signed yes-or-no against the conditions you configure.
 
 Part of [InsumerAPI](https://insumermodel.com/developers/). No secrets. No identity-first. No static credentials.
