@@ -103,10 +103,10 @@ class InsumerToolSpec(BaseToolSpec):
       plus the ML-DSA-65 post-quantum key under two RFC 9964 AKP
       entries. No API key required. Enables offline verification.
     - ``buy_api_key``: let an agent purchase its own new API key on-chain with
-      USDC, USDT, or BTC, no human in the loop. Wallet address is the
-      identity; no email required.
-    - ``buy_credits``: top up credits on an existing API key with a USDC,
-      USDT, or BTC payment, no out-of-band billing.
+      USDC, no human in the loop. Wallet address is the identity; no email
+      required. The paying wallet signs the payment text.
+    - ``buy_credits``: top up credits on an existing API key with a USDC
+      payment, no out-of-band billing.
     """
 
     spec_functions = [
@@ -602,18 +602,39 @@ class InsumerToolSpec(BaseToolSpec):
         tx_hash: str,
         chain_id: Any,
         app_name: str,
-        amount: Optional[float] = None,
+        amount: float,
         channel: Optional[str] = None,
+        sender_signature: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Buy a new API key on-chain with USDC, USDT, or BTC. Agent-friendly:
-        the sender wallet address of the transaction becomes the registered
-        identity on the new key. No email, no human signup flow.
+        """Buy a new API key on-chain with USDC. Agent-friendly: the sender
+        wallet address of the transaction becomes the registered identity on
+        the new key. No email, no human signup flow.
 
-        Pre-requisite: the agent must have already broadcast a USDC, USDT, or
-        BTC transfer to the platform wallet BEFORE calling this method. The
-        transaction hash is then submitted here for on-chain verification.
-        USDC and USDT are auto-detected on EVM chains and Solana; USDT-TRC20
-        is supported on Tron.
+        Pre-requisite: the agent must have already broadcast a USDC transfer
+        to the platform wallet BEFORE calling this method. The transaction
+        hash is then submitted here for on-chain verification. Key and credit
+        purchases are paid in USDC only, on an accepted EVM chain or Solana;
+        any other token or chain is refused with a 400.
+
+        The wallet that sent the payment must sign this exact text (five
+        lines joined by ``\\n``, no trailing newline), sent as
+        ``sender_signature``::
+
+            api.insumermodel.com
+            Confirm the wallet that sent this payment.
+            Purpose: key purchase
+            Chain: eip155:<chainId>        (or: solana)
+            Transaction: <transaction id>
+
+        The transaction id is the EVM hash as 0x plus lowercase hex, or the
+        Solana signature as sent. EVM wallets sign with EIP-191
+        ``personal_sign`` (0x hex; smart wallets are checked with ERC-1271);
+        Solana wallets sign with ed25519 ``signMessage`` (base58 or base64).
+        A call without ``sender_signature`` is refused with a 400 whose
+        message gives the exact text to sign, so an agent can call once,
+        sign the returned text and call again. A signature that does not
+        match the paying wallet is refused with a 403; a 503 means the
+        smart-wallet check could not complete and the payment was not used.
 
         One key per wallet: if the sending wallet already has a self-serve
         key, the API returns 409 and asks you to top up the existing key
@@ -622,25 +643,24 @@ class InsumerToolSpec(BaseToolSpec):
         Keys from this endpoint have tier ``paid`` and no fixed expiry.
 
         Args:
-            tx_hash: Transaction hash of the USDC, USDT, or BTC transfer to the
-                platform wallet. Must not have been used before.
-            chain_id: Either an EVM chain ID (int, e.g. 1, 8453, 10) for USDC
-                or USDT transfers, the string ``"solana"`` for USDC or USDT on
-                Solana, the string ``"tron"`` for USDT-TRC20 on Tron, or the
-                string ``"bitcoin"`` for BTC.
+            tx_hash: Transaction hash of the USDC transfer to the platform
+                wallet. Must not have been used before.
+            chain_id: The chain the USDC was sent on: an EVM chain ID (int):
+                1 (Ethereum), 10 (Optimism), 56 (BNB Chain), 137 (Polygon),
+                8453 (Base), 42161 (Arbitrum) or 43114 (Avalanche); or the
+                string ``"solana"``.
             app_name: Human-readable name for the key (max 100 chars).
-            amount: Stablecoin amount paid in USD (required for USDC, USDT,
-                and USDT-TRC20 chains). Not required for Bitcoin: the USD
-                value is derived from the on-chain BTC amount at market
-                rate.
+            amount: USDC amount paid (required, minimum 5).
             channel: Optional tracking tag for the purchase channel.
+            sender_signature: The paying wallet's signature over the text
+                above, sent as ``senderSignature``. Required by the API.
 
         Returns:
             API response envelope. ``key`` (the raw API key, shown once) is
             omitted when the paying EVM wallet receives the Insumer Access
             pass on this purchase, the default; that wallet then
             authenticates with ``Authorization: Wallet``. It is returned on
-            non-EVM purchases and whenever the pass cannot be delivered:
+            Solana purchases and whenever the pass cannot be delivered:
 
             .. code-block:: python
 
@@ -657,10 +677,6 @@ class InsumerToolSpec(BaseToolSpec):
                         "effectiveRate": "$0.04/credit",
                         "chainName": str,
                         "registeredWallet": "0x...",
-                        # Bitcoin only:
-                        "btcPaid": str, "btcPrice": float, "usdEquivalent": str,
-                        # USDC or USDT (usdcPaid carries the stablecoin amount,
-                        # USDC or USDT):
                         "usdcPaid": str,
                     },
                     "meta": {...},
@@ -670,11 +686,12 @@ class InsumerToolSpec(BaseToolSpec):
             "txHash": tx_hash,
             "chainId": chain_id,
             "appName": app_name,
+            "amount": amount,
         }
-        if amount is not None:
-            body["amount"] = amount
         if channel:
             body["channel"] = channel
+        if sender_signature is not None:
+            body["senderSignature"] = sender_signature
         # This endpoint is public (no auth); the transaction sender wallet
         # is the identity.
         response = requests.post(
@@ -690,33 +707,37 @@ class InsumerToolSpec(BaseToolSpec):
         self,
         tx_hash: str,
         chain_id: Any,
-        amount: Optional[float] = None,
+        amount: float,
         update_wallet: bool = False,
+        sender_signature: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Top up attestation credits on an existing API key with a USDC,
-        USDT, or BTC payment. Requires the API key the tool spec was
-        initialized with.
+        """Top up attestation credits on an existing API key with a USDC
+        payment. Requires the API key the tool spec was initialized with.
 
         Pre-requisite: the agent or operator must have already broadcast a
-        USDC, USDT, or BTC transfer to the platform wallet BEFORE calling
-        this method. USDC and USDT are auto-detected on EVM chains and
-        Solana; USDT-TRC20 is supported on Tron.
+        USDC transfer to the platform wallet BEFORE calling this method.
+        Purchases are paid in USDC only, on the chains ``buy_api_key``
+        lists; any other token or chain is refused with a 400.
 
         Args:
-            tx_hash: Transaction hash of the USDC, USDT, or BTC transfer to
-                the platform wallet. Must not have been used before.
-            chain_id: Either an EVM chain ID (int) for USDC or USDT
-                transfers, the string ``"solana"`` for USDC or USDT on
-                Solana, the string ``"tron"`` for USDT-TRC20 on Tron, or
-                the string ``"bitcoin"`` for BTC.
-            amount: Stablecoin amount paid in USD (required for USDC, USDT,
-                and USDT-TRC20 chains). Not required for Bitcoin: USD
-                value is derived from the on-chain BTC amount at market
-                rate.
+            tx_hash: Transaction hash of the USDC transfer to the platform
+                wallet. Must not have been used before.
+            chain_id: The chain the USDC was sent on: an EVM chain ID (int):
+                1, 10, 56, 137, 8453, 42161 or 43114; or the string
+                ``"solana"``.
+            amount: USDC amount paid (required, minimum 5).
             update_wallet: If the transaction sender differs from the wallet
                 currently registered on this API key, set to ``True`` to
-                rebind the registered wallet to the new sender. Defaults to
+                rebind the registered wallet to the new sender (with a
+                ``sender_signature`` from the new wallet). Defaults to
                 ``False``, which rejects mismatched senders with a 403.
+            sender_signature: The paying wallet's signature over the payment
+                text ``buy_api_key`` describes, with ``Purpose: credit
+                purchase``; sent as ``senderSignature``. Needed when the key
+                has no registered wallet yet, or when ``update_wallet`` moves
+                the key to a different sender. A payment from the registered
+                wallet needs none. A call that needs it and lacks it gets a
+                400 naming the exact text to sign.
 
         Returns:
             API response envelope:
@@ -730,11 +751,7 @@ class InsumerToolSpec(BaseToolSpec):
                         "totalCredits": int,
                         "effectiveRate": "$0.04/credit",
                         "chainName": str,
-                        # USDC or USDT (usdcPaid carries the stablecoin amount,
-                        # USDC or USDT):
                         "usdcPaid": str,
-                        # Bitcoin:
-                        "btcPaid": str, "btcPrice": float, "usdEquivalent": str,
                     },
                     "meta": {...},
                 }
@@ -742,9 +759,10 @@ class InsumerToolSpec(BaseToolSpec):
         body: Dict[str, Any] = {
             "txHash": tx_hash,
             "chainId": chain_id,
+            "amount": amount,
         }
-        if amount is not None:
-            body["amount"] = amount
         if update_wallet:
             body["updateWallet"] = True
+        if sender_signature is not None:
+            body["senderSignature"] = sender_signature
         return self._post("/v1/credits/buy", body)

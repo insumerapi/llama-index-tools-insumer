@@ -469,19 +469,90 @@ def test_buy_api_key_no_auth_required(mock_post: MagicMock) -> None:
     assert result["data"]["tier"] == "paid"
 
 
+def test_buy_api_key_amount_required() -> None:
+    # Purchases are USDC only: amount is required (the Bitcoin exemption is gone).
+    spec = InsumerToolSpec()
+    with pytest.raises(TypeError):
+        spec.buy_api_key(  # type: ignore[call-arg]
+            tx_hash="0x" + "b" * 64,
+            chain_id=8453,
+            app_name="my-agent",
+        )
+
+
+def test_buy_credits_amount_required(spec: InsumerToolSpec) -> None:
+    with pytest.raises(TypeError):
+        spec.buy_credits(tx_hash="0x" + "d" * 64, chain_id=8453)  # type: ignore[call-arg]
+
+
+def test_buy_tools_schema_requires_amount_and_offers_sender_signature(spec: InsumerToolSpec) -> None:
+    tools = {t.metadata.name: t for t in spec.to_tool_list()}
+    for name in ("buy_api_key", "buy_credits"):
+        schema = tools[name].metadata.fn_schema.model_json_schema()
+        assert "amount" in schema["required"], name
+        assert "sender_signature" in schema["properties"], name
+        assert "sender_signature" not in schema["required"], name
+        text = tools[name].metadata.description
+        for word in ("USDT", "BTC", "Bitcoin", '"bitcoin"', "Tron", '"tron"'):
+            assert word not in text, (name, word)
+
+
 @patch("llama_index.tools.insumer.base.requests.post")
-def test_buy_api_key_bitcoin_no_amount(mock_post: MagicMock) -> None:
+def test_buy_api_key_sender_signature_passed_through(mock_post: MagicMock) -> None:
+    mock_post.return_value = _mock_response({"ok": True, "data": {}, "meta": {}})
+    spec = InsumerToolSpec()
+    sig = "0x" + "1" * 130
+    spec.buy_api_key(
+        tx_hash="0x" + "b" * 64,
+        chain_id=8453,
+        app_name="my-agent",
+        amount=5.0,
+        sender_signature=sig,
+    )
+    body = mock_post.call_args.kwargs["json"]
+    assert body == {
+        "txHash": "0x" + "b" * 64,
+        "chainId": 8453,
+        "appName": "my-agent",
+        "amount": 5.0,
+        "senderSignature": sig,
+    }
+
+
+@patch("llama_index.tools.insumer.base.requests.post")
+def test_buy_api_key_solana_sender_signature(mock_post: MagicMock) -> None:
     mock_post.return_value = _mock_response({"ok": True, "data": {}, "meta": {}})
     spec = InsumerToolSpec()
     spec.buy_api_key(
-        tx_hash="abc123" * 10,
-        chain_id="bitcoin",
-        app_name="btc-agent",
+        tx_hash="5" * 88,
+        chain_id="solana",
+        app_name="sol-agent",
+        amount=10.0,
+        sender_signature="3Xb58sig",
     )
     body = mock_post.call_args.kwargs["json"]
-    # For Bitcoin, amount is not required — USD value derived from on-chain
-    assert "amount" not in body
-    assert body["chainId"] == "bitcoin"
+    assert body["chainId"] == "solana"
+    assert body["amount"] == 10.0
+    assert body["senderSignature"] == "3Xb58sig"
+
+
+@patch("llama_index.tools.insumer.base.requests.post")
+def test_buy_api_key_missing_signature_400_gives_text_to_sign(mock_post: MagicMock) -> None:
+    tx = "0x" + "b" * 64
+    message = (
+        "senderSignature is required: sign this exact text with the wallet that sent the payment, "
+        "and send the signature as senderSignature.\n\napi.insumermodel.com\n"
+        "Confirm the wallet that sent this payment.\nPurpose: key purchase\n"
+        "Chain: eip155:8453\nTransaction: " + tx
+    )
+    mock_post.return_value = _error_response(
+        400, {"ok": False, "error": {"code": "invalid_request", "message": message}}
+    )
+    spec = InsumerToolSpec()
+    with pytest.raises(requests.HTTPError) as excinfo:
+        spec.buy_api_key(tx_hash=tx, chain_id=8453, app_name="my-agent", amount=5.0)
+    assert "Purpose: key purchase" in str(excinfo.value)
+    assert "senderSignature" not in mock_post.call_args.kwargs["json"]
 
 
 @patch("llama_index.tools.insumer.base.requests.post")
@@ -540,15 +611,24 @@ def test_buy_credits_no_key_raises() -> None:
 
 @patch("llama_index.tools.insumer.base.requests.post")
 def test_buy_credits_update_wallet_flag(mock_post: MagicMock, spec: InsumerToolSpec) -> None:
+    # A wallet change takes the new sender's signature over the payment text.
     mock_post.return_value = _mock_response({"ok": True, "data": {}, "meta": {}})
+    sig = "0x" + "2" * 130
     spec.buy_credits(
         tx_hash="0x" + "e" * 64,
-        chain_id="bitcoin",
+        chain_id=137,
+        amount=25.0,
         update_wallet=True,
+        sender_signature=sig,
     )
     body = mock_post.call_args.kwargs["json"]
-    assert body["updateWallet"] is True
-    assert "amount" not in body  # Not required for Bitcoin
+    assert body == {
+        "txHash": "0x" + "e" * 64,
+        "chainId": 137,
+        "amount": 25.0,
+        "updateWallet": True,
+        "senderSignature": sig,
+    }
 
 
 def _error_response(status: int, payload: Optional[dict] = None) -> requests.Response:

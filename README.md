@@ -176,17 +176,31 @@ jwks = insumer.get_jwks()
 
 ### `buy_api_key`
 
-Agentic commerce: let an agent purchase its own new API key on-chain with USDC, USDT or BTC. The transaction sender wallet becomes the registered identity. No email, no signup flow, no human in the loop. No API key required to call: the payment *is* the auth.
+Agentic commerce: let an agent purchase its own new API key on-chain with USDC. The transaction sender wallet becomes the registered identity. No email, no signup flow, no human in the loop. No API key required to call: the payment *is* the auth.
 
-Pre-requisite: broadcast a USDC, USDT or BTC transfer to the platform wallet first, then submit the transaction hash here.
+Key and credit purchases are paid in USDC only, on Ethereum (1), Optimism (10), BNB Chain (56), Polygon (137), Base (8453), Arbitrum (42161), Avalanche (43114) or Solana (`"solana"`). `amount` (the USDC sent, minimum 5) is required. Receiving addresses are on the [pricing page](https://insumermodel.com/pricing/).
+
+Pre-requisite: broadcast a USDC transfer to the platform wallet first. Then the wallet that sent it signs this exact text (five lines, no trailing newline) and the signature goes in `sender_signature`:
+
+```
+api.insumermodel.com
+Confirm the wallet that sent this payment.
+Purpose: key purchase
+Chain: eip155:8453
+Transaction: 0xabc...
+```
+
+`Chain` is `eip155:<chainId>` or `solana`; `Transaction` is the EVM hash as 0x plus lowercase hex, or the Solana signature as sent. EVM wallets sign with EIP-191 `personal_sign` (smart wallets are checked with ERC-1271); Solana wallets sign with `signMessage` (base58 or base64). A call without `sender_signature` returns a 400 whose message gives the exact text to sign, so an agent can call once, sign that text and call again.
 
 ```python
-# After the agent broadcasts a 100 USDC transfer on Base to the platform wallet:
+# After the agent broadcasts a 100 USDC transfer on Base to the platform wallet
+# and signs the payment text with the same wallet:
 result = InsumerToolSpec().buy_api_key(
     tx_hash="0xabc...",
-    chain_id=8453,            # Base; use "solana", "bitcoin", or "tron" for those chains
+    chain_id=8453,            # Base; use "solana" for Solana
     app_name="my-agent",
-    amount=100.0,              # USDC amount; not required for Bitcoin
+    amount=100.0,              # USDC amount, required
+    sender_signature="0x...",  # the paying wallet's signature over the text above
 )
 new_key = result["data"].get("key")   # insr_live_..., shown once; omitted when the
                                       # EVM wallet receives the Insumer Access pass
@@ -197,7 +211,7 @@ One key per wallet: if the sending wallet already has a self-serve key, the API 
 
 ### `buy_credits`
 
-Top up credits on an existing API key (the one you passed to `InsumerToolSpec`) with a USDC, USDT or BTC payment. Same pattern: broadcast the transfer, submit the `tx_hash`.
+Top up credits on an existing API key (the one you passed to `InsumerToolSpec`) with a USDC payment. Same pattern: broadcast the transfer, submit the `tx_hash`. A payment from the key's registered wallet needs no signature. When the key has no registered wallet yet, or `update_wallet=True` moves it to a new sender, the paying wallet signs the same text with `Purpose: credit purchase` and you pass it as `sender_signature`.
 
 ```python
 insumer.buy_credits(
