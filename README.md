@@ -231,7 +231,7 @@ A pay-per-call wallet whose cumulative spend qualifies is told so in the respons
 
 37 total:
 
-- **31 EVM chains**: Ethereum, Base, Arbitrum, Optimism, Polygon, Avalanche, BNB, XDC, Robinhood Chain, Arc, Unichain, Linea, zkSync, Scroll, Blast, Mantle, Celo, Gnosis, Sonic, and more
+- **31 EVM chains**: Ethereum, Base, Arbitrum, Optimism, Polygon, Avalanche, BNB, XDC, Robinhood Chain, Arc, Tempo, Unichain, Linea, zkSync, Scroll, Mantle, Celo, Gnosis, Sonic, and more
 - **Solana** (mainnet)
 - **XRPL** (mainnet): native XRP plus trust-line tokens
 - **Bitcoin** (mainnet): native BTC only
